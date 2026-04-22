@@ -1,0 +1,269 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Qazaq Generation Design System - Modern Kazakh National Style */
+
+@layer base {
+  :root {
+    /* Light theme - Clean and professional */
+    --background: 210 20% 98%;
+    --foreground: 220 30% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 30% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 30% 15%;
+
+    /* Primary - Deep navy blue */
+    --primary: 220 60% 25%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary */
+    --secondary: 210 20% 93%;
+    --secondary-foreground: 220 30% 15%;
+
+    --muted: 210 20% 93%;
+    --muted-foreground: 220 10% 45%;
+
+    /* Accent - Kazakh gold */
+    --accent: 42 80% 55%;
+    --accent-foreground: 220 30% 15%;
+
+    /* Turquoise accent */
+    --turquoise: 175 60% 45%;
+    --turquoise-foreground: 0 0% 100%;
+
+    /* Gold accent */
+    --gold: 42 80% 55%;
+    --gold-foreground: 220 30% 15%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 20% 88%;
+    --input: 210 20% 88%;
+    --ring: 220 60% 25%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar - Light theme */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 30% 25%;
+    --sidebar-primary: 220 60% 25%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 20% 95%;
+    --sidebar-accent-foreground: 220 30% 15%;
+    --sidebar-border: 210 20% 90%;
+    --sidebar-ring: 220 60% 25%;
+
+    /* Chart colors */
+    --chart-1: 220 60% 45%;
+    --chart-2: 42 80% 55%;
+    --chart-3: 175 60% 45%;
+    --chart-4: 340 65% 55%;
+    --chart-5: 280 50% 55%;
+  }
+
+  .dark {
+    /* Dark theme - Premium dark navy with Kazakh accents */
+    --background: 222 47% 8%;
+    --foreground: 210 20% 95%;
+
+    --card: 222 47% 11%;
+    --card-foreground: 210 20% 95%;
+
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 20% 95%;
+
+    /* Primary - Lighter for dark mode */
+    --primary: 42 80% 55%;
+    --primary-foreground: 222 47% 8%;
+
+    /* Secondary */
+    --secondary: 222 30% 18%;
+    --secondary-foreground: 210 20% 95%;
+
+    --muted: 222 30% 18%;
+    --muted-foreground: 210 15% 60%;
+
+    /* Accent */
+    --accent: 175 60% 45%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Turquoise accent */
+    --turquoise: 175 60% 50%;
+    --turquoise-foreground: 222 47% 8%;
+
+    /* Gold accent */
+    --gold: 42 80% 60%;
+    --gold-foreground: 222 47% 8%;
+
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 30% 20%;
+    --input: 222 30% 18%;
+    --ring: 42 80% 55%;
+
+    /* Sidebar - Dark theme */
+    --sidebar-background: 222 47% 6%;
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-primary: 42 80% 55%;
+    --sidebar-primary-foreground: 222 47% 8%;
+    --sidebar-accent: 222 30% 15%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 222 30% 15%;
+    --sidebar-ring: 42 80% 55%;
+
+    /* Chart colors - brighter for dark mode */
+    --chart-1: 220 60% 55%;
+    --chart-2: 42 80% 60%;
+    --chart-3: 175 60% 50%;
+    --chart-4: 340 65% 60%;
+    --chart-5: 280 50% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: 'Montserrat', sans-serif;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+@layer utilities {
+  /* Glassmorphism */
+  .glass {
+    @apply bg-card/80 backdrop-blur-xl border border-border/50;
+  }
+
+  .glass-dark {
+    @apply bg-card/60 backdrop-blur-xl border border-white/10;
+  }
+
+  /* Kazakh ornament pattern background */
+  .kazakh-pattern {
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23c9a227' fill-opacity='0.05'%3E%3Cpath d='M30 0L40 10L30 20L20 10L30 0zM0 30L10 20L20 30L10 40L0 30zM60 30L50 20L40 30L50 40L60 30zM30 60L40 50L30 40L20 50L30 60z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+
+  /* Gold gradient text */
+  .text-gold-gradient {
+    @apply bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 bg-clip-text text-transparent;
+  }
+
+  /* Hover scale animation */
+  .hover-scale {
+    @apply transition-transform duration-200 hover:scale-105;
+  }
+
+  /* Card hover effect */
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1;
+  }
+
+  /* Subtle glow effect */
+  .glow-gold {
+    box-shadow: 0 0 20px hsl(42 80% 55% / 0.2);
+  }
+
+  .glow-turquoise {
+    box-shadow: 0 0 20px hsl(175 60% 45% / 0.2);
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-muted/50;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/30 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/50;
+}
+
+/* Animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent, hsl(var(--primary) / 0.1), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
