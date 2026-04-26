@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
+import { useLocation } from 'react-router-dom';
 import aiGirlImg from '@/assets/ai-girl.png';
 import { api } from '@/lib/api';
 
@@ -24,6 +25,7 @@ interface Message {
 export function AIFloatingChat() {
   const { t, language } = useLanguage();
   const { profile, role } = useAuth();
+  const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [input, setInput] = useState('');
@@ -32,6 +34,7 @@ export function AIFloatingChat() {
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
 
   useEffect(() => {
     if (isOpen && messages.length === 0) {
@@ -159,6 +162,10 @@ export function AIFloatingChat() {
       setIsLoading(false);
     }
   };
+
+  if (isAuthPage) {
+    return null;
+  }
 
   return (
     <>

@@ -8,10 +8,10 @@ export function ThemeToggle() {
 
   return (
     <Button
-      variant="ghost"
+      variant="outline"
       size="icon"
       onClick={toggleTheme}
-      className="relative overflow-hidden"
+      className="relative h-10 w-10 overflow-hidden border-white/55 bg-white/62 text-slate-800 shadow-[0_10px_30px_hsl(218_44%_34%/0.10)] backdrop-blur-xl hover:border-gold/35 hover:bg-white/75 focus-visible:ring-gold/50 dark:border-white/18 dark:bg-white/12 dark:text-white dark:shadow-[0_10px_30px_hsl(222_47%_4%/0.16)] dark:backdrop-blur-md dark:hover:bg-white/18"
     >
       <motion.div
         initial={false}
