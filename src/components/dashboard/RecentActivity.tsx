@@ -1,9 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Activity, CheckCircle2, UserCheck, AlertTriangle, MessageSquare, XCircle } from 'lucide-react';
-import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatDate } from '@/lib/date';
 
 interface ActivityItem {
   id: string;
@@ -92,7 +92,7 @@ export default function RecentActivity({ items }: RecentActivityProps) {
                       )}
                     </p>
                     <p className="text-[10px] text-muted-foreground truncate mt-0.5">
-                      {item.ticket_title} • {format(new Date(item.created_at), 'dd.MM HH:mm')}
+                      {item.ticket_title} • {formatDate(item.created_at, 'dd.MM HH:mm')}
                     </p>
                   </div>
                 </motion.div>

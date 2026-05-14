@@ -4,9 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowRight, Ticket } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatDate } from '@/lib/date';
 
 interface RecentTicket {
   id: string;
@@ -121,7 +121,7 @@ export default function RecentTicketsTable({ tickets }: RecentTicketsTableProps)
                       {ticket.assignee_name || '-'}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {format(new Date(ticket.created_at), 'dd.MM HH:mm')}
+                      {formatDate(ticket.created_at, 'dd.MM HH:mm')}
                     </TableCell>
                   </motion.tr>
                 ))}

@@ -36,6 +36,13 @@ interface FiltersState {
 
 const defaultFilters: FiltersState = { dateRange: 'all', priority: 'all', status: 'all', assignee: 'all', department: 'all' };
 
+const pick = <T,>(obj: any, ...keys: string[]): T | undefined => {
+  for (const key of keys) {
+    if (obj && obj[key] !== undefined && obj[key] !== null) return obj[key] as T;
+  }
+  return undefined;
+};
+
 export default function Dashboard() {
   const { role, profile } = useAuth();
   const navigate = useNavigate();
@@ -70,13 +77,28 @@ export default function Dashboard() {
         api.getUserRoles(),
       ]);
 
-      const tickets = ticketsRes.data || [];
-      const breachedTicketIds = new Set((slaData || []).filter((s: any) => s.breached_response || s.breached_resolve).map((s: any) => s.ticket_id));
+      const tickets = (ticketsRes.data || []).map((ticket: any) => ({
+        ...ticket,
+        requester_id: pick<string>(ticket, 'requester_id', 'requesterId') || '',
+        assignee_id: pick<string | null>(ticket, 'assignee_id', 'assigneeId') || null,
+        created_at: pick<string>(ticket, 'created_at', 'createdAt') || new Date().toISOString(),
+      }));
+      const breachedTicketIds = new Set((slaData || [])
+        .filter((s: any) => pick<boolean>(s, 'breached_response', 'breachedResponse') || pick<boolean>(s, 'breached_resolve', 'breachedResolve'))
+        .map((s: any) => pick<string>(s, 'ticket_id', 'ticketId')));
 
       // Departments & agents
       setDepartments(deptsData || []);
-      const agentRoles = (rolesData || []).filter((r: any) => ['agent', 'admin', 'manager'].includes(r.role));
-      const agentUsers = (profiles || []).filter((p: any) => agentRoles.some((r: any) => r.user_id === p.user_id));
+      const normalizedProfiles = (profiles || []).map((profile: any) => ({
+        ...profile,
+        user_id: pick<string>(profile, 'user_id', 'userId') || '',
+      }));
+      const normalizedRoles = (rolesData || []).map((userRole: any) => ({
+        ...userRole,
+        user_id: pick<string>(userRole, 'user_id', 'userId') || '',
+      }));
+      const agentRoles = normalizedRoles.filter((r: any) => ['agent', 'admin', 'manager'].includes(r.role));
+      const agentUsers = normalizedProfiles.filter((p: any) => agentRoles.some((r: any) => r.user_id === p.user_id));
       setAgents(agentUsers.map((a: any) => ({ id: a.user_id, name: a.name })));
 
       // KPI
@@ -120,7 +142,7 @@ export default function Dashboard() {
       setSlaPerformance(totalSla > 0 ? Math.round((withinSla / totalSla) * 100) : 100);
 
       // Recent tickets with names
-      const profileMap = new Map((profiles || []).map((p: any) => [p.user_id, p.name]));
+      const profileMap = new Map(normalizedProfiles.map((p: any) => [p.user_id, p.name]));
       const recent = tickets.slice(0, 8);
       setRecentTickets(recent.map((t: any) => ({
         ...t,
@@ -129,7 +151,14 @@ export default function Dashboard() {
       })));
 
       // Recent activity
-      const history = (historyData || []).slice(0, 15);
+      const history = (historyData || []).map((historyItem: any) => ({
+        ...historyItem,
+        actor_id: pick<string>(historyItem, 'actor_id', 'actorId') || '',
+        ticket_id: pick<string>(historyItem, 'ticket_id', 'ticketId') || '',
+        old_value: pick<string | null>(historyItem, 'old_value', 'oldValue') || null,
+        new_value: pick<string | null>(historyItem, 'new_value', 'newValue') || null,
+        created_at: pick<string>(historyItem, 'created_at', 'createdAt') || new Date().toISOString(),
+      })).slice(0, 15);
       const ticketMap = new Map(tickets.map((t: any) => [t.id, t.title]));
       setRecentActivity(history.map((h: any) => ({
         ...h,
