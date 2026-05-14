@@ -60,6 +60,18 @@ export default function TicketDetail() {
 
   const isAgent = role === 'agent' || role === 'admin' || role === 'manager';
 
+  const normalizeComment = (comment: any, authorName?: string): Comment => {
+    const authorId = pick<string>(comment, 'author_id', 'authorId') || '';
+    return {
+      id: comment.id,
+      body: comment.body || '',
+      created_at: pick<string>(comment, 'created_at', 'createdAt') || new Date().toISOString(),
+      author_id: authorId,
+      is_internal: !!pick<boolean>(comment, 'is_internal', 'isInternal'),
+      author_name: authorName || t('ticket.detail.unknown'),
+    };
+  };
+
   useEffect(() => {
     if (id) { fetchTicket(); fetchComments(); fetchAttachments(); if (isAgent) fetchAgents(); }
   }, [id]);
@@ -106,15 +118,10 @@ export default function TicketDetail() {
         const profileMap = new Map((profiles || []).map((p: any) => [p.user_id, p.name]));
         setComments(data.map((c: any) => {
           const authorId = pick<string>(c, 'author_id', 'authorId') || '';
-          return {
-            id: c.id,
-            body: c.body,
-            created_at: pick<string>(c, 'created_at', 'createdAt') || new Date().toISOString(),
-            author_id: authorId,
-            is_internal: !!pick<boolean>(c, 'is_internal', 'isInternal'),
-            author_name: profileMap.get(authorId) || t('ticket.detail.unknown'),
-          };
+          return normalizeComment(c, profileMap.get(authorId) || t('ticket.detail.unknown'));
         }));
+      } else {
+        setComments([]);
       }
     } catch (error) {
       console.error('Error fetching comments:', error);
@@ -182,7 +189,8 @@ export default function TicketDetail() {
     setSubmitting(true);
     try {
       const data = await api.addComment(id!, newComment, false);
-      setComments([...comments, { ...data, author_name: user.email?.split('@')[0] || t('common.you') }]);
+      const authorName = user.name || user.email?.split('@')[0] || t('common.you');
+      setComments((current) => [...current, normalizeComment(data, authorName)]);
       setNewComment('');
       toast({ title: t('common.success'), description: t('ticket.detail.comments') });
     } catch (error: any) {

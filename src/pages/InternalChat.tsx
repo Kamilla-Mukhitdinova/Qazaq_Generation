@@ -1,27 +1,96 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { format, isToday, isYesterday } from 'date-fns';
+import { motion } from 'framer-motion';
+import {
+  ArrowLeft,
+  CheckCheck,
+  Image,
+  FileText,
+  Loader2,
+  MessageSquare,
+  Mic,
+  Palette,
+  Paperclip,
+  Plus,
+  Search,
+  Send,
+  Settings,
+  Square,
+  User,
+  Users,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
+import { toast } from '@/hooks/use-toast';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
-import { toast } from '@/hooks/use-toast';
-import { Send, Plus, Users, MessageSquare, Search, Hash, User } from 'lucide-react';
-import { format } from 'date-fns';
-import { motion } from 'framer-motion';
+import { Textarea } from '@/components/ui/textarea';
 
-const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+const getInitials = (name: string) =>
+  name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+
+const getRoomTime = (room: any) => {
+  const dateValue = room.last_message?.created_at || room.last_message?.createdAt || room.created_at || room.createdAt;
+  return dateValue ? format(new Date(dateValue), 'HH:mm') : '';
+};
+
+const CHAT_BACKGROUNDS = [
+  {
+    id: 'soft',
+    label: 'Soft',
+    className: 'bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.08),transparent_28%),linear-gradient(180deg,hsl(var(--muted)/0.25),transparent)]',
+    swatch: 'bg-gradient-to-br from-blue-100 via-background to-slate-100',
+  },
+  {
+    id: 'clean',
+    label: 'Clean',
+    className: 'bg-background',
+    swatch: 'bg-background',
+  },
+  {
+    id: 'mint',
+    label: 'Mint',
+    className: 'bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.14),transparent_30%),linear-gradient(180deg,rgba(236,253,245,0.75),rgba(255,255,255,0.45))] dark:bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.16),transparent_30%),linear-gradient(180deg,rgba(6,78,59,0.18),transparent)]',
+    swatch: 'bg-gradient-to-br from-emerald-100 via-teal-50 to-background',
+  },
+  {
+    id: 'sky',
+    label: 'Sky',
+    className: 'bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.16),transparent_32%),linear-gradient(180deg,rgba(224,242,254,0.78),rgba(255,255,255,0.42))] dark:bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.17),transparent_32%),linear-gradient(180deg,rgba(12,74,110,0.18),transparent)]',
+    swatch: 'bg-gradient-to-br from-sky-100 via-cyan-50 to-background',
+  },
+];
+
+const getAvatarUrl = (profile: any) => profile?.avatarUrl || profile?.avatar_url || '';
+const getProfileUserId = (profile: any) => profile?.userId || profile?.user_id;
+const getMemberUserId = (member: any) => member?.user_id || member?.userId;
+const getMessageType = (message: any) => message?.message_type || message?.messageType || 'text';
+const getFileName = (message: any) => message?.file_name || message?.fileName || message?.body || 'file';
+const getFileSize = (message: any) => message?.file_size || message?.fileSize;
+const formatFileSize = (bytes?: number) => {
+  if (!bytes) return '';
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 export default function InternalChat() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
@@ -31,92 +100,175 @@ export default function InternalChat() {
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [userSearch, setUserSearch] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [chatBackground, setChatBackground] = useState(() => localStorage.getItem('qg-chat-background') || 'soft');
+  const [avatarDraft, setAvatarDraft] = useState(profile?.avatar_url || '');
+  const [isRecording, setIsRecording] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+  const recordingStartedAtRef = useRef<number>(0);
   const userId = user?.id;
 
-  // Fetch all profiles for member selection
-  const { data: profiles = [] } = useQuery({
+  const { data: profiles = [], refetch: refetchProfiles } = useQuery({
     queryKey: ['chat-profiles'],
     queryFn: () => api.getProfiles(),
   });
 
-  // Fetch user's chat rooms
   const { data: rooms = [], refetch: refetchRooms } = useQuery({
     queryKey: ['chat-rooms'],
     queryFn: () => api.getChatRooms(),
     enabled: !!userId,
+    refetchInterval: 5000,
   });
 
-  // Fetch messages for selected room
   const { data: messages = [], refetch: refetchMessages } = useQuery({
     queryKey: ['chat-messages', selectedRoom],
-    queryFn: () => selectedRoom ? api.getChatMessages(selectedRoom) : Promise.resolve([]),
+    queryFn: () => (selectedRoom ? api.getChatMessages(selectedRoom) : Promise.resolve([])),
     enabled: !!selectedRoom,
-    refetchInterval: 3000, // Poll every 3s since no realtime
+    refetchInterval: 2500,
   });
 
-  // Auto-scroll to bottom
+  const profileMap = useMemo(() => {
+    const map: Record<string, any> = {};
+    profiles.forEach((p: any) => {
+      const profileUserId = getProfileUserId(p);
+      if (profileUserId) map[profileUserId] = p;
+    });
+    return map;
+  }, [profiles]);
+
+  const selectedRoomData = rooms.find((r: any) => r.id === selectedRoom);
+  const activeBackground = CHAT_BACKGROUNDS.find((background) => background.id === chatBackground) || CHAT_BACKGROUNDS[0];
+
+  const upsertRoomInCache = (room: any) => {
+    if (!room?.id) return;
+    queryClient.setQueryData<any[]>(['chat-rooms'], (currentRooms = []) => {
+      const withoutCreatedRoom = currentRooms.filter((currentRoom: any) => currentRoom.id !== room.id);
+      return [room, ...withoutCreatedRoom];
+    });
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, selectedRoom]);
 
-  // Send message
+  useEffect(() => {
+    setAvatarDraft(profile?.avatar_url || '');
+  }, [profile?.avatar_url]);
+
+  const getRoomDisplayName = (room: any) => {
+    if (room.type === 'group' && room.name) return room.name;
+    const otherMembers = room.chat_room_members
+      ?.filter((m: any) => getMemberUserId(m) !== userId)
+      .map((m: any) => profileMap[getMemberUserId(m)]?.name || t('common.unknownUser'));
+    return otherMembers?.join(', ') || t('chat.direct');
+  };
+
+  const getRoomSubtitle = (room: any) => {
+    const lastMessage = room.last_message;
+    if (lastMessage?.body) {
+      const senderId = lastMessage.sender_id || lastMessage.senderId;
+      const senderName = senderId === userId ? t('chat.you') : profileMap[senderId]?.name;
+      const prefix = room.type === 'group' && senderName ? `${senderName}: ` : '';
+      return `${prefix}${lastMessage.body}`;
+    }
+    return room.type === 'group'
+      ? `${room.chat_room_members?.length || 0} ${t('chat.members')}`
+      : t('chat.direct');
+  };
+
+  const filteredRooms = rooms.filter((room: any) => {
+    const query = searchRooms.trim().toLowerCase();
+    if (!query) return true;
+    return `${getRoomDisplayName(room)} ${getRoomSubtitle(room)}`.toLowerCase().includes(query);
+  });
+
+  const quickPeople = profiles
+    .filter((p: any) => getProfileUserId(p) !== userId)
+    .filter((p: any) => !searchRooms.trim() || p.name.toLowerCase().includes(searchRooms.toLowerCase()))
+    .slice(0, searchRooms.trim() ? 8 : 5);
+
+  const filteredProfiles = profiles.filter(
+    (p: any) => getProfileUserId(p) !== userId && (!userSearch || p.name.toLowerCase().includes(userSearch.toLowerCase())),
+  );
+
   const sendMutation = useMutation({
     mutationFn: async (body: string) => {
-      if (!selectedRoom || !userId) return;
+      if (!selectedRoom) return;
       await api.sendChatMessage(selectedRoom, body);
     },
     onSuccess: () => {
       setMessage('');
       refetchMessages();
+      refetchRooms();
     },
     onError: (err: any) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
   });
 
-  // Create group
+  const uploadMutation = useMutation({
+    mutationFn: async ({ file, messageType, durationMs, fileName }: { file: File | Blob; messageType: 'file' | 'audio'; durationMs?: number; fileName?: string }) => {
+      if (!selectedRoom) return;
+      await api.uploadChatMessage(selectedRoom, file, { messageType, durationMs, fileName });
+    },
+    onSuccess: () => {
+      refetchMessages();
+      refetchRooms();
+    },
+    onError: (err: any) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
+  });
+
   const createGroupMutation = useMutation({
     mutationFn: async () => {
-      if (!userId) return;
-      const membersWithSelf = [...new Set([...selectedMembers, userId])];
-      const isGroup = membersWithSelf.length > 2 || newGroupName;
-      
-      const room = await api.createChatRoom({
-        name: isGroup ? newGroupName || `Group (${membersWithSelf.length})` : undefined,
+      const membersWithSelf = [...new Set([...selectedMembers, userId].filter(Boolean))] as string[];
+      const isGroup = membersWithSelf.length > 2 || !!newGroupName.trim();
+      return api.createChatRoom({
+        name: isGroup ? newGroupName.trim() || `Group (${membersWithSelf.length})` : undefined,
         type: isGroup ? 'group' : 'direct',
         memberIds: membersWithSelf,
       });
-
-      return room.id;
     },
-    onSuccess: (roomId) => {
-      refetchRooms();
+    onSuccess: (room: any) => {
+      upsertRoomInCache(room);
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       setCreateDialogOpen(false);
       setNewGroupName('');
       setSelectedMembers([]);
-      if (roomId) setSelectedRoom(roomId);
+      setUserSearch('');
+      if (room?.id) setSelectedRoom(room.id);
     },
     onError: (err: any) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
   });
 
-  // Start direct chat
+  const saveAvatarMutation = useMutation({
+    mutationFn: async () => api.updateMyProfile({ avatarUrl: avatarDraft.trim() || null }),
+    onSuccess: () => {
+      refetchProfiles();
+      queryClient.invalidateQueries({ queryKey: ['chat-profiles'] });
+      toast({ title: t('common.success'), description: t('chat.avatarSaved') });
+    },
+    onError: (err: any) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
+  });
+
   const startDirect = async (otherUserId: string) => {
     if (!userId) return;
-    // Check if direct room already exists
-    const existingRoom = rooms.find((r: any) =>
-      r.type === 'direct' &&
-      r.chat_room_members?.length === 2 &&
-      r.chat_room_members.some((m: any) => m.user_id === userId) &&
-      r.chat_room_members.some((m: any) => m.user_id === otherUserId)
+    const existingRoom = rooms.find(
+      (room: any) =>
+        room.type === 'direct' &&
+        room.chat_room_members?.length === 2 &&
+        room.chat_room_members.some((m: any) => getMemberUserId(m) === userId) &&
+        room.chat_room_members.some((m: any) => getMemberUserId(m) === otherUserId),
     );
+
     if (existingRoom) {
       setSelectedRoom(existingRoom.id);
       return;
     }
+
     try {
-      const room = await api.createChatRoom({
-        type: 'direct',
-        memberIds: [userId, otherUserId],
-      });
+      const room: any = await api.createChatRoom({ type: 'direct', memberIds: [userId, otherUserId] });
+      upsertRoomInCache(room);
       refetchRooms();
       setSelectedRoom(room.id);
     } catch (err: any) {
@@ -124,175 +276,300 @@ export default function InternalChat() {
     }
   };
 
-  const profileMap = useMemo(() => {
-    const map: Record<string, any> = {};
-    profiles.forEach((p: any) => { map[p.user_id] = p; });
-    return map;
-  }, [profiles]);
-
-  const getRoomDisplayName = (room: any) => {
-    if (room.type === 'group' && room.name) return room.name;
-    const otherMembers = room.chat_room_members
-      ?.filter((m: any) => m.user_id !== userId)
-      .map((m: any) => profileMap[m.user_id]?.name || t('common.unknownUser'));
-    return otherMembers?.join(', ') || 'Chat';
-  };
-
-  const filteredRooms = rooms.filter((r: any) => {
-    if (!searchRooms) return true;
-    return getRoomDisplayName(r).toLowerCase().includes(searchRooms.toLowerCase());
-  });
-
-  const filteredProfiles = profiles.filter((p: any) =>
-    p.user_id !== userId && (!userSearch || p.name.toLowerCase().includes(userSearch.toLowerCase()))
-  );
-
-  const selectedRoomData = rooms.find((r: any) => r.id === selectedRoom);
-
   const handleSend = () => {
     const trimmed = message.trim();
-    if (!trimmed) return;
+    if (!trimmed || sendMutation.isPending) return;
     sendMutation.mutate(trimmed);
   };
 
+  const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || uploadMutation.isPending) return;
+    uploadMutation.mutate({ file, messageType: 'file' });
+  };
+
+  const startRecording = async () => {
+    if (!selectedRoom || isRecording || uploadMutation.isPending) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recordingStartedAtRef.current = Date.now();
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const durationMs = Date.now() - recordingStartedAtRef.current;
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        audioChunksRef.current = [];
+        if (blob.size > 0) {
+          uploadMutation.mutate({
+            file: blob,
+            messageType: 'audio',
+            durationMs,
+            fileName: `voice-${Date.now()}.webm`,
+          });
+        }
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setIsRecording(true);
+    } catch {
+      toast({ title: t('common.error'), description: t('chat.microphoneDenied'), variant: 'destructive' });
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
+  const getMessageDateLabel = (dateValue: string) => {
+    const date = new Date(dateValue);
+    if (isToday(date)) return t('chat.today');
+    if (isYesterday(date)) return t('chat.yesterday');
+    return format(date, 'dd.MM.yyyy');
+  };
+
+  const setBackground = (backgroundId: string) => {
+    setChatBackground(backgroundId);
+    localStorage.setItem('qg-chat-background', backgroundId);
+  };
+
+  const getDirectRoomProfile = (room: any) => {
+    const otherMember = room.chat_room_members?.find((member: any) => getMemberUserId(member) !== userId);
+    return otherMember ? profileMap[getMemberUserId(otherMember)] : null;
+  };
+
+  const renderRoomAvatar = (room: any, size = 'h-11 w-11') => {
+    if (room.type === 'group') {
+      return (
+        <div className={cn('flex shrink-0 items-center justify-center rounded-full bg-emerald-500/12 text-emerald-600 dark:text-emerald-300', size)}>
+          <Users className="h-5 w-5" />
+        </div>
+      );
+    }
+
+    const directProfile = getDirectRoomProfile(room);
+    return (
+      <Avatar className={cn('shrink-0', size)}>
+        <AvatarImage src={getAvatarUrl(directProfile)} alt={directProfile?.name || t('chat.direct')} />
+        <AvatarFallback className="bg-blue-500/10 text-xs text-blue-600">
+          {directProfile?.name ? getInitials(directProfile.name) : <User className="h-5 w-5" />}
+        </AvatarFallback>
+      </Avatar>
+    );
+  };
+
+  let previousDate = '';
+
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="h-[calc(100vh-120px)]">
-      <div className="flex h-full gap-0 border rounded-xl overflow-hidden bg-card">
-        {/* Sidebar - Room list */}
-        <div className="w-80 border-r flex flex-col bg-muted/30">
-          <div className="p-4 border-b space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-lg text-foreground">{t('chat.title')}</h2>
-              <Button size="icon" variant="ghost" onClick={() => setCreateDialogOpen(true)}>
-                <Plus className="h-5 w-5" />
-              </Button>
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="h-[calc(100vh-112px)] min-h-[620px]">
+      <div className="flex h-full overflow-hidden rounded-xl border bg-background shadow-sm">
+        <aside className={cn('w-full flex-col border-r bg-muted/20 md:flex md:w-[360px]', selectedRoomData ? 'hidden md:flex' : 'flex')}>
+          <div className="border-b bg-background/80 p-4 backdrop-blur">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h1 className="text-xl font-semibold text-foreground">{t('chat.title')}</h1>
+                <p className="text-xs text-muted-foreground">{rooms.length} {t('chat.chats').toLowerCase()}</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button size="icon" variant="ghost" className="rounded-full" onClick={() => setSettingsOpen(true)} title={t('chat.customize')}>
+                  <Settings className="h-5 w-5" />
+                </Button>
+                <Button size="icon" className="rounded-full" onClick={() => setCreateDialogOpen(true)}>
+                  <Plus className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder={t('common.search')}
                 value={searchRooms}
-                onChange={e => setSearchRooms(e.target.value)}
-                className="pl-10"
+                onChange={(e) => setSearchRooms(e.target.value)}
+                placeholder={t('common.search')}
+                className="h-10 rounded-full border-0 bg-muted pl-10 shadow-none"
               />
             </div>
           </div>
 
           <ScrollArea className="flex-1">
-            {/* Users section for starting direct chats */}
             <div className="p-2">
-              <p className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase">
-                {t('chat.chats')}
-              </p>
               {filteredRooms.length === 0 ? (
-                <p className="px-3 py-6 text-sm text-muted-foreground text-center">
-                  {t('chat.noChats')}
-                </p>
-              ) : filteredRooms.map((room: any) => (
-                <button
-                  key={room.id}
-                  onClick={() => setSelectedRoom(room.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                    selectedRoom === room.id
-                      ? 'bg-primary/10 text-primary'
-                      : 'hover:bg-muted text-foreground'
-                  }`}
-                >
-                  <div className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold ${
-                    room.type === 'group' ? 'bg-accent text-accent-foreground' : 'bg-primary/10 text-primary'
-                  }`}>
-                    {room.type === 'group' ? <Users className="h-4 w-4" /> : <User className="h-4 w-4" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{getRoomDisplayName(room)}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {room.type === 'group'
-                        ? `${room.chat_room_members?.length || 0} ${t('chat.members')}`
-                        : t('chat.direct')}
-                    </p>
-                  </div>
-                </button>
-              ))}
+                <div className="px-4 py-8 text-center text-sm text-muted-foreground">{t('chat.noChats')}</div>
+              ) : (
+                filteredRooms.map((room: any) => {
+                  const active = selectedRoom === room.id;
+                  return (
+                    <button
+                      key={room.id}
+                      onClick={() => setSelectedRoom(room.id)}
+                      className={cn(
+                        'group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all',
+                        active ? 'bg-primary text-primary-foreground shadow-sm' : 'hover:bg-muted',
+                      )}
+                    >
+                      {renderRoomAvatar(room)}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-sm font-medium">{getRoomDisplayName(room)}</p>
+                          {room.type === 'group' && (
+                            <Badge variant={active ? 'secondary' : 'outline'} className="h-5 shrink-0 rounded-full px-1.5 text-[10px]">
+                              {room.chat_room_members?.length || 0}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className={cn('mt-0.5 truncate text-xs', active ? 'text-primary-foreground/75' : 'text-muted-foreground')}>
+                          {getRoomSubtitle(room)}
+                        </p>
+                      </div>
+                      <span className={cn('shrink-0 self-start pt-0.5 text-[11px]', active ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+                        {getRoomTime(room)}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
             </div>
 
-            <Separator className="my-2" />
+            <Separator className="mx-4 my-2" />
 
-            {/* Quick start direct chat */}
             <div className="p-2">
-              <p className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase">
-                {t('chat.people')}
-              </p>
-              {profiles.filter((p: any) => p.user_id !== userId).slice(0, 10).map((p: any) => (
+              <p className="px-3 pb-2 text-xs font-medium uppercase text-muted-foreground">{t('chat.people')}</p>
+              {quickPeople.map((person: any) => (
                 <button
-                  key={p.user_id}
-                  onClick={() => startDirect(p.user_id)}
-                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-muted transition-colors"
+                  key={getProfileUserId(person)}
+                  onClick={() => startDirect(getProfileUserId(person))}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-muted"
                 >
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-primary/10 text-primary text-xs">{getInitials(p.name)}</AvatarFallback>
+                  <Avatar className="h-9 w-9">
+                    <AvatarImage src={getAvatarUrl(person)} alt={person.name} />
+                    <AvatarFallback className="bg-blue-500/10 text-xs text-blue-600">{getInitials(person.name)}</AvatarFallback>
                   </Avatar>
-                  <span className="text-sm text-foreground truncate">{p.name}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">{person.name}</p>
+                    <p className="text-xs text-muted-foreground">{t('chat.direct')}</p>
+                  </div>
                 </button>
               ))}
             </div>
           </ScrollArea>
-        </div>
+        </aside>
 
-        {/* Main chat area */}
-        <div className="flex-1 flex flex-col">
+        <main className={cn('min-w-0 flex-1 flex-col', selectedRoomData ? 'flex' : 'hidden md:flex')}>
           {selectedRoomData ? (
             <>
-              {/* Chat header */}
-              <div className="p-4 border-b flex items-center gap-3">
-                <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-                  selectedRoomData.type === 'group' ? 'bg-accent text-accent-foreground' : 'bg-primary/10 text-primary'
-                }`}>
-                  {selectedRoomData.type === 'group' ? <Users className="h-5 w-5" /> : <User className="h-5 w-5" />}
-                </div>
-                <div>
-                  <h3 className="font-semibold text-foreground">{getRoomDisplayName(selectedRoomData)}</h3>
+              <div className="flex items-center gap-3 border-b bg-background/90 px-4 py-3 backdrop-blur">
+                <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setSelectedRoom(null)}>
+                  <ArrowLeft className="h-5 w-5" />
+                </Button>
+                {renderRoomAvatar(selectedRoomData, 'h-10 w-10')}
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-base font-semibold text-foreground">{getRoomDisplayName(selectedRoomData)}</h2>
                   <p className="text-xs text-muted-foreground">
-                    {selectedRoomData.chat_room_members?.length || 0} {t('chat.members')}
+                    {selectedRoomData.type === 'group'
+                      ? `${selectedRoomData.chat_room_members?.length || 0} ${t('chat.members')}`
+                      : t('chat.direct')}
                   </p>
                 </div>
+                <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setSettingsOpen(true)} title={t('chat.customize')}>
+                  <Settings className="h-5 w-5" />
+                </Button>
               </div>
 
-              {/* Messages */}
-              <ScrollArea className="flex-1 p-4">
-                <div className="space-y-4">
+              <ScrollArea className={cn('flex-1', activeBackground.className)}>
+                <div className="mx-auto flex w-full max-w-3xl flex-col px-4 py-5">
                   {messages.length === 0 && (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-30" />
-                      <p>{t('chat.noMessages')}</p>
+                    <div className="flex min-h-[360px] items-center justify-center text-center text-muted-foreground">
+                      <div>
+                        <MessageSquare className="mx-auto mb-3 h-12 w-12 opacity-25" />
+                        <p className="text-sm">{t('chat.noMessages')}</p>
+                      </div>
                     </div>
                   )}
+
                   {messages.map((msg: any) => {
-                    const isOwn = msg.sender_id === userId;
-                    const sender = profileMap[msg.sender_id];
+                    const isOwn = msg.sender_id === userId || msg.senderId === userId;
+                    const senderId = msg.sender_id || msg.senderId;
+                    const sender = profileMap[senderId];
+                    const createdAt = msg.created_at || msg.createdAt;
+                    const messageType = getMessageType(msg);
+                    const fileUrl = messageType !== 'text' ? api.getChatMessageFileUrl(msg.id) : '';
+                    const dateLabel = getMessageDateLabel(createdAt);
+                    const showDate = previousDate !== dateLabel;
+                    previousDate = dateLabel;
+
                     return (
-                      <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`flex gap-2 max-w-[70%] ${isOwn ? 'flex-row-reverse' : ''}`}>
-                          {!isOwn && (
-                            <Avatar className="h-8 w-8 flex-shrink-0">
-                              <AvatarFallback className="bg-muted text-muted-foreground text-xs">
-                                {getInitials(sender?.name || '?')}
-                              </AvatarFallback>
-                            </Avatar>
-                          )}
-                          <div>
+                      <div key={msg.id}>
+                        {showDate && (
+                          <div className="my-4 flex justify-center">
+                            <span className="rounded-full bg-background/85 px-3 py-1 text-xs text-muted-foreground shadow-sm">
+                              {dateLabel}
+                            </span>
+                          </div>
+                        )}
+                        <div className={cn('mb-2 flex', isOwn ? 'justify-end' : 'justify-start')}>
+                          <div className={cn('flex max-w-[82%] gap-2 sm:max-w-[68%]', isOwn && 'flex-row-reverse')}>
                             {!isOwn && (
-                              <p className="text-xs text-muted-foreground mb-1">{sender?.name || t('common.unknownUser')}</p>
+                              <Avatar className="mt-1 h-8 w-8">
+                                <AvatarImage src={getAvatarUrl(sender)} alt={sender?.name || t('common.unknownUser')} />
+                                <AvatarFallback className="bg-background text-xs text-muted-foreground">
+                                  {getInitials(sender?.name || '?')}
+                                </AvatarFallback>
+                              </Avatar>
                             )}
-                            <div className={`rounded-2xl px-4 py-2 ${
-                              isOwn
-                                ? 'bg-primary text-primary-foreground rounded-tr-md'
-                                : 'bg-muted text-foreground rounded-tl-md'
-                            }`}>
-                              <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
+                            <div>
+                              {!isOwn && selectedRoomData.type === 'group' && (
+                                <p className="mb-1 px-1 text-xs font-medium text-blue-600 dark:text-blue-300">
+                                  {sender?.name || t('common.unknownUser')}
+                                </p>
+                              )}
+                              <div
+                                className={cn(
+                                  'rounded-2xl px-3.5 py-2 shadow-sm',
+                                  isOwn
+                                    ? 'rounded-br-md bg-primary text-primary-foreground'
+                                    : 'rounded-bl-md bg-background text-foreground',
+                                )}
+                              >
+                                {messageType === 'audio' ? (
+                                  <audio controls src={fileUrl} className="h-9 w-64 max-w-full" />
+                                ) : messageType === 'file' ? (
+                                  <a
+                                    href={fileUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={cn(
+                                      'flex min-w-0 items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-colors',
+                                      isOwn
+                                        ? 'border-primary-foreground/20 bg-primary-foreground/10 hover:bg-primary-foreground/15'
+                                        : 'border-border bg-muted/50 hover:bg-muted',
+                                    )}
+                                  >
+                                    <FileText className="h-5 w-5 shrink-0" />
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block truncate font-medium">{getFileName(msg)}</span>
+                                      <span className={cn('block text-xs', isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+                                        {formatFileSize(getFileSize(msg))}
+                                      </span>
+                                    </span>
+                                  </a>
+                                ) : (
+                                  <p className="whitespace-pre-wrap break-words text-sm leading-5">{msg.body}</p>
+                                )}
+                                <div className={cn('mt-1 flex items-center justify-end gap-1 text-[10px]', isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+                                  <span>{format(new Date(createdAt), 'HH:mm')}</span>
+                                  {isOwn && <CheckCheck className="h-3 w-3" />}
+                                </div>
+                              </div>
                             </div>
-                            <p className={`text-[10px] text-muted-foreground mt-1 ${isOwn ? 'text-right' : ''}`}>
-                              {format(new Date(msg.created_at), 'HH:mm')}
-                            </p>
                           </div>
                         </div>
                       </div>
@@ -302,68 +579,166 @@ export default function InternalChat() {
                 </div>
               </ScrollArea>
 
-              {/* Message input */}
-              <div className="p-4 border-t">
-                <form onSubmit={e => { e.preventDefault(); handleSend(); }} className="flex gap-2">
-                  <Input
+              <div className="border-t bg-background p-3">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSend();
+                  }}
+                  className="mx-auto flex max-w-3xl items-end gap-2"
+                >
+                  <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 shrink-0 rounded-full"
+                    disabled={!selectedRoom || uploadMutation.isPending || isRecording}
+                    onClick={() => fileInputRef.current?.click()}
+                    title={t('chat.attachFile')}
+                  >
+                    {uploadMutation.isPending && !isRecording ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                  </Button>
+                  <Textarea
                     value={message}
-                    onChange={e => setMessage(e.target.value)}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
                     placeholder={t('chat.typePlaceholder')}
-                    className="flex-1"
+                    className="max-h-36 min-h-11 resize-none rounded-2xl border-0 bg-muted px-4 py-3 shadow-none focus-visible:ring-1"
+                    rows={1}
                   />
-                  <Button type="submit" size="icon" disabled={!message.trim() || sendMutation.isPending}>
-                    <Send className="h-4 w-4" />
+                  <Button
+                    type="button"
+                    variant={isRecording ? 'destructive' : 'ghost'}
+                    size="icon"
+                    className="h-11 w-11 shrink-0 rounded-full"
+                    disabled={!selectedRoom || uploadMutation.isPending}
+                    onClick={isRecording ? stopRecording : startRecording}
+                    title={isRecording ? t('chat.stopRecording') : t('chat.recordVoice')}
+                  >
+                    {isRecording ? <Square className="h-4 w-4 fill-current" /> : <Mic className="h-4 w-4" />}
+                  </Button>
+                  <Button type="submit" size="icon" className="h-11 w-11 shrink-0 rounded-full" disabled={!message.trim() || sendMutation.isPending}>
+                    {sendMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   </Button>
                 </form>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              <div className="text-center">
-                <MessageSquare className="h-16 w-16 mx-auto mb-4 opacity-20" />
-                <p className="text-lg font-medium">{t('chat.selectChat')}</p>
-                <p className="text-sm mt-1">{t('chat.startNew')}</p>
+            <div className="flex flex-1 items-center justify-center bg-muted/20 text-center">
+              <div className="max-w-sm px-6">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <MessageSquare className="h-8 w-8" />
+                </div>
+                <h2 className="text-lg font-semibold text-foreground">{t('chat.selectChat')}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{t('chat.startNew')}</p>
               </div>
             </div>
           )}
-        </div>
+        </main>
       </div>
 
-      {/* Create group dialog */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('chat.customize')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5">
+            <div className="space-y-3">
+              <Label className="flex items-center gap-2">
+                <Palette className="h-4 w-4" />
+                {t('chat.background')}
+              </Label>
+              <div className="grid grid-cols-4 gap-2">
+                {CHAT_BACKGROUNDS.map((background) => (
+                  <button
+                    key={background.id}
+                    type="button"
+                    onClick={() => setBackground(background.id)}
+                    className={cn(
+                      'h-16 rounded-lg border p-1 transition-all hover:scale-[1.02]',
+                      chatBackground === background.id ? 'border-primary ring-2 ring-primary/25' : 'border-border',
+                    )}
+                    title={background.label}
+                  >
+                    <span className={cn('block h-full rounded-md', background.swatch)} />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label className="flex items-center gap-2">
+                <Image className="h-4 w-4" />
+                {t('chat.avatarUrl')}
+              </Label>
+              <div className="flex items-center gap-3">
+                <Avatar className="h-14 w-14">
+                  <AvatarImage src={avatarDraft} alt={profile?.name || user?.email || 'User'} />
+                  <AvatarFallback className="bg-blue-500/10 text-blue-600">
+                    {getInitials(profile?.name || user?.email || 'U')}
+                  </AvatarFallback>
+                </Avatar>
+                <Input
+                  value={avatarDraft}
+                  onChange={(e) => setAvatarDraft(e.target.value)}
+                  placeholder="https://..."
+                  className="min-w-0"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">{t('chat.avatarHint')}</p>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setSettingsOpen(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button onClick={() => saveAvatarMutation.mutate()} disabled={saveAvatarMutation.isPending}>
+                {saveAvatarMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {t('common.save')}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{t('chat.newGroup')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
+            <div className="space-y-2">
               <Label>{t('chat.groupName')}</Label>
-              <Input value={newGroupName} onChange={e => setNewGroupName(e.target.value)} placeholder={t('chat.groupPlaceholder')} />
+              <Input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} placeholder={t('chat.groupPlaceholder')} />
             </div>
-            <div>
-              <Label>{t('chat.groupMembers')} ({selectedMembers.length})</Label>
-              <Input
-                placeholder={t('common.search')}
-                value={userSearch}
-                onChange={e => setUserSearch(e.target.value)}
-                className="mt-1"
-              />
-              <ScrollArea className="h-48 mt-2 border rounded-md">
-                <div className="p-2 space-y-1">
-                  {filteredProfiles.map((p: any) => (
-                    <label key={p.user_id} className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-muted cursor-pointer">
+            <div className="space-y-2">
+              <Label>
+                {t('chat.groupMembers')} ({selectedMembers.length})
+              </Label>
+              <Input placeholder={t('common.search')} value={userSearch} onChange={(e) => setUserSearch(e.target.value)} />
+              <ScrollArea className="h-56 rounded-md border">
+                <div className="space-y-1 p-2">
+                  {filteredProfiles.map((person: any) => (
+                    <label key={getProfileUserId(person)} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted">
                       <Checkbox
-                        checked={selectedMembers.includes(p.user_id)}
-                        onCheckedChange={checked => {
-                          setSelectedMembers(prev =>
-                            checked ? [...prev, p.user_id] : prev.filter(id => id !== p.user_id)
+                        checked={selectedMembers.includes(getProfileUserId(person))}
+                        onCheckedChange={(checked) => {
+                          setSelectedMembers((prev) =>
+                            checked ? [...prev, getProfileUserId(person)] : prev.filter((id) => id !== getProfileUserId(person)),
                           );
                         }}
                       />
-                      <Avatar className="h-7 w-7">
-                        <AvatarFallback className="bg-primary/10 text-primary text-[10px]">{getInitials(p.name)}</AvatarFallback>
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={getAvatarUrl(person)} alt={person.name} />
+                        <AvatarFallback className="bg-blue-500/10 text-xs text-blue-600">{getInitials(person.name)}</AvatarFallback>
                       </Avatar>
-                      <span className="text-sm">{p.name}</span>
+                      <span className="truncate text-sm">{person.name}</span>
                     </label>
                   ))}
                 </div>
@@ -373,10 +748,8 @@ export default function InternalChat() {
               <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
                 {t('common.cancel')}
               </Button>
-              <Button
-                onClick={() => createGroupMutation.mutate()}
-                disabled={selectedMembers.length === 0 || createGroupMutation.isPending}
-              >
+              <Button onClick={() => createGroupMutation.mutate()} disabled={selectedMembers.length === 0 || createGroupMutation.isPending}>
+                {createGroupMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {t('common.create')}
               </Button>
             </div>

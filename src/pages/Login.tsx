@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Shield, Lock, Mail } from 'lucide-react';
@@ -26,6 +28,13 @@ export default function Login() {
   const [otpCode, setOtpCode] = useState('');
   const [step, setStep] = useState<LoginStep>('credentials');
   const [isLoading, setIsLoading] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetStep, setResetStep] = useState<'request' | 'confirm'>('request');
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [isResetLoading, setIsResetLoading] = useState(false);
   const [tempToken, setTempToken] = useState<string | null>(null);
   const { signIn, verify2FA } = useAuth();
   const navigate = useNavigate();
@@ -52,8 +61,8 @@ export default function Login() {
     e.preventDefault();
     setIsLoading(true);
 
-    try {
-      const result = await signIn(email, password);
+      try {
+        const result = await signIn(email, password);
 
       if (result.error) {
         toast({
@@ -114,6 +123,74 @@ export default function Login() {
     }
 
     setIsLoading(false);
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    setIsResetLoading(true);
+    try {
+      await api.forgotPassword(resetEmail);
+      setResetStep('confirm');
+      toast({
+        title: t('common.success'),
+        description: t('auth.resetTokenSent'),
+      });
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: error instanceof Error ? error.message : t('auth.wrongCredentials'),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsResetLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (resetPassword !== resetConfirmPassword) {
+      toast({
+        title: t('common.error'),
+        description: t('auth.passwordMismatch'),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (resetPassword.length < 6) {
+      toast({
+        title: t('common.error'),
+        description: t('auth.passwordTooShort'),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsResetLoading(true);
+    try {
+      await api.resetPassword(resetToken.trim(), resetPassword);
+      setEmail(resetEmail);
+      setPassword('');
+      setResetOpen(false);
+      setResetStep('request');
+      setResetToken('');
+      setResetPassword('');
+      setResetConfirmPassword('');
+      toast({
+        title: t('common.success'),
+        description: t('auth.passwordChanged'),
+      });
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: error instanceof Error ? error.message : t('auth.wrongCredentials'),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsResetLoading(false);
+    }
   };
 
   const containerVariants = {
@@ -182,7 +259,7 @@ export default function Login() {
       />
 
       <motion.div
-        className="absolute top-4 right-4 flex items-center gap-2 z-50"
+        className="absolute right-3 top-3 z-50 flex items-center gap-2 sm:right-4 sm:top-4"
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
@@ -263,10 +340,23 @@ export default function Login() {
                       <Input id="email" type="email" placeholder="email@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isLoading} className={inputClassName} />
                     </motion.div>
                     <motion.div className="space-y-2" variants={itemVariants}>
-                      <Label htmlFor="password" className={labelClassName}>
-                        <Lock className="h-4 w-4 text-gold" />
-                        {t('auth.password')}
-                      </Label>
+                      <div className="flex items-center justify-between gap-3">
+                        <Label htmlFor="password" className={labelClassName}>
+                          <Lock className="h-4 w-4 text-gold" />
+                          {t('auth.password')}
+                        </Label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResetEmail(email);
+                            setResetStep('request');
+                            setResetOpen(true);
+                          }}
+                          className="text-xs font-medium text-gold transition-colors hover:text-gold/80 hover:underline"
+                        >
+                          {t('auth.forgotPassword')}
+                        </button>
+                      </div>
                       <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={isLoading} className={inputClassName} />
                     </motion.div>
                   </CardContent>
@@ -331,6 +421,82 @@ export default function Login() {
           © 2026 Qazaq Generation. ITSM & Service Desk Platform
         </motion.p>
       </motion.div>
+
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('auth.resetPassword')}</DialogTitle>
+            <DialogDescription>{t('auth.resetPasswordDesc')}</DialogDescription>
+          </DialogHeader>
+          {resetStep === 'request' ? (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset-email">{t('auth.email')}</Label>
+                <Input
+                  id="reset-email"
+                  type="email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  placeholder="email@example.com"
+                  required
+                  disabled={isResetLoading}
+                />
+              </div>
+              <Button type="submit" className="w-full bg-gold text-slate-950 hover:bg-gold/90" disabled={isResetLoading}>
+                {isResetLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {t('auth.sendResetCode')}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset-token">{t('auth.resetCode')}</Label>
+                <Input
+                  id="reset-token"
+                  value={resetToken}
+                  onChange={(e) => setResetToken(e.target.value)}
+                  placeholder="Код из сообщения"
+                  required
+                  disabled={isResetLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reset-password">{t('auth.newPassword')}</Label>
+                <Input
+                  id="reset-password"
+                  type="password"
+                  value={resetPassword}
+                  onChange={(e) => setResetPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  disabled={isResetLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reset-confirm-password">{t('auth.confirmPassword')}</Label>
+                <Input
+                  id="reset-confirm-password"
+                  type="password"
+                  value={resetConfirmPassword}
+                  onChange={(e) => setResetConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  disabled={isResetLoading}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setResetStep('request')} disabled={isResetLoading}>
+                  {t('auth.back')}
+                </Button>
+                <Button type="submit" className="flex-1 bg-gold text-slate-950 hover:bg-gold/90" disabled={isResetLoading}>
+                  {isResetLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {t('auth.resetPassword')}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

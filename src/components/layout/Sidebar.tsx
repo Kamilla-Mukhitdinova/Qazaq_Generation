@@ -6,28 +6,101 @@ import {
   LayoutDashboard,
   Ticket,
   Users,
+  AppWindow,
+  BadgeCheck,
   BarChart3,
+  Box,
+  Boxes,
+  Cable,
+  AlarmClock,
+  CalendarClock,
+  Calculator,
+  Car,
   MessageSquare,
   LogOut,
   Key,
+  KeyRound,
   User,
   BellRing,
+  Blocks,
+  Bookmark,
+  BriefcaseBusiness,
+  CalendarCheck,
+  CloudDownload,
+  Computer,
+  Contact,
+  Cpu,
+  Database,
+  Globe,
+  HardDrive,
+  Handshake,
+  Map,
+  MapPin,
+  Monitor,
+  Network,
   Package,
+  Phone,
+  PhoneCall,
+  Plug,
+  Printer,
+  Router,
+  Rss,
+  Server,
+  Smartphone,
   MessagesSquare,
   BookOpen,
+  Building2,
+  ClipboardCheck,
+  ClipboardList,
+  Component,
+  FilePenLine,
+  FileBadge,
+  FileText,
+  Fingerprint,
+  Inbox,
+  Layers,
+  Link as LinkIcon,
+  ListTodo,
+  LogIn,
+  Logs,
+  NotebookTabs,
   PanelLeftClose,
   PanelLeftOpen,
+  PenLine,
   ChevronDown,
   ChevronRight,
+  PieChart,
+  Plus,
+  Puzzle,
+  Repeat,
   Settings,
+  Settings2,
+  ShieldCheck,
+  SlidersHorizontal,
+  StickyNote,
+  Tags,
+  TriangleAlert,
+  UserCog,
+  UserRound,
+  UsersRound,
+  Video,
+  Warehouse,
+  Workflow,
+  Wrench,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import logo from '@/assets/logo.png';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useState } from 'react';
+import type { PointerEvent } from 'react';
+
+const SIDEBAR_MIN_WIDTH = 280;
+const SIDEBAR_MAX_WIDTH = 420;
+const SIDEBAR_DEFAULT_WIDTH = 320;
 
 interface SidebarProps {
   collapsed?: boolean;
@@ -35,14 +108,14 @@ interface SidebarProps {
 }
 
 interface NavItem {
-  icon: any;
+  icon: LucideIcon;
   labelKey: string;
   href: string;
   roles: string[];
 }
 
 interface NavGroup {
-  icon: any;
+  icon: LucideIcon;
   labelKey: string;
   items: NavItem[];
   roles?: string[];
@@ -56,16 +129,57 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
   const { profile, role, signOut } = useAuth();
   const { t } = useLanguage();
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH;
+
+    const savedWidth = Number(localStorage.getItem('qg-sidebar-width'));
+    if (!Number.isFinite(savedWidth)) return SIDEBAR_DEFAULT_WIDTH;
+
+    return Math.min(Math.max(savedWidth, SIDEBAR_MIN_WIDTH), SIDEBAR_MAX_WIDTH);
+  });
+  const isResizable = Boolean(onToggleCollapse);
 
   const navStructure: NavStructure = [
     { icon: LayoutDashboard, labelKey: 'nav.dashboard', href: '/dashboard', roles: ['employee', 'agent', 'manager', 'admin'] },
-    { icon: User, labelKey: 'nav.profile', href: '/profile', roles: ['employee', 'agent', 'manager', 'admin'] },
-    { icon: Package, labelKey: 'nav.assets', href: '/assets', roles: ['employee', 'agent', 'manager', 'admin'] },
+    {
+      icon: Package,
+      labelKey: 'nav.assets',
+      items: [
+        { icon: LayoutDashboard, labelKey: 'nav.assets.panel', href: '/assets?section=panel', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Computer, labelKey: 'nav.assets.computers', href: '/assets?section=computers', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Monitor, labelKey: 'nav.assets.monitors', href: '/assets?section=monitors', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: AppWindow, labelKey: 'nav.assets.software', href: '/assets?section=software', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Network, labelKey: 'nav.assets.networkDevices', href: '/assets?section=network-devices', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Cpu, labelKey: 'nav.assets.devices', href: '/assets?section=devices', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Printer, labelKey: 'nav.assets.printers', href: '/assets?section=printers', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: HardDrive, labelKey: 'nav.assets.cartridges', href: '/assets?section=cartridges', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Boxes, labelKey: 'nav.assets.consumables', href: '/assets?section=consumables', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Phone, labelKey: 'nav.assets.phones', href: '/assets?section=phones', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Server, labelKey: 'nav.assets.racks', href: '/assets?section=racks', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Box, labelKey: 'nav.assets.cases', href: '/assets?section=cases', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Plug, labelKey: 'nav.assets.powerDistribution', href: '/assets?section=power-distribution', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Router, labelKey: 'nav.assets.passiveDevices', href: '/assets?section=passive-devices', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Package, labelKey: 'nav.assets.unmanagedAssets', href: '/assets?section=unmanaged-assets', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Cable, labelKey: 'nav.assets.cables', href: '/assets?section=cables', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Smartphone, labelKey: 'nav.assets.simCards', href: '/assets?section=sim-cards', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: ShieldCheck, labelKey: 'nav.assets.vpn', href: '/assets?section=vpn', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: BarChart3, labelKey: 'nav.assets.reportAnalytics', href: '/assets?section=report-analytics', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Globe, labelKey: 'nav.assets.global', href: '/assets?section=global', roles: ['employee', 'agent', 'manager', 'admin'] },
+      ],
+      roles: ['employee', 'agent', 'manager', 'admin'],
+    },
     {
       icon: Ticket,
       labelKey: 'nav.support',
       items: [
         { icon: Ticket, labelKey: 'nav.tickets', href: '/tickets', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Plus, labelKey: 'nav.support.createTicket', href: '/tickets/new', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: TriangleAlert, labelKey: 'nav.support.problems', href: '/tickets?type=problems', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: ClipboardList, labelKey: 'nav.support.changes', href: '/tickets?type=changes', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: CalendarClock, labelKey: 'nav.support.planning', href: '/tickets?type=planning', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: PieChart, labelKey: 'nav.support.statistics', href: '/reports?section=support-statistics', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: AlarmClock, labelKey: 'nav.support.periodicTickets', href: '/tickets?type=periodic', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Repeat, labelKey: 'nav.support.recurringChanges', href: '/tickets?type=recurring-changes', roles: ['employee', 'agent', 'manager', 'admin'] },
       ],
       roles: ['employee', 'agent', 'manager', 'admin'],
     },
@@ -73,8 +187,36 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
       icon: BarChart3,
       labelKey: 'nav.management',
       items: [
-        { icon: BarChart3, labelKey: 'nav.reports', href: '/reports/manage', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: BookOpen, labelKey: 'nav.knowledge', href: '/knowledge', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: KeyRound, labelKey: 'nav.management.licenses', href: '/assets?section=licenses', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Calculator, labelKey: 'nav.management.budgets', href: '/assets?section=budgets', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Handshake, labelKey: 'nav.management.suppliers', href: '/assets?section=suppliers', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Contact, labelKey: 'nav.management.contacts', href: '/assets?section=contacts', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: FileBadge, labelKey: 'nav.management.contracts', href: '/assets?section=contracts', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: FileText, labelKey: 'nav.management.documents', href: '/documents', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: PhoneCall, labelKey: 'nav.management.phoneLines', href: '/assets?section=phone-lines', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: BadgeCheck, labelKey: 'nav.management.certificates', href: '/assets?section=certificates', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Warehouse, labelKey: 'nav.management.dataCenters', href: '/assets?section=data-centers', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Network, labelKey: 'nav.management.clusters', href: '/assets?section=clusters', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Globe, labelKey: 'nav.management.domains', href: '/assets?section=domains', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Blocks, labelKey: 'nav.management.complexes', href: '/assets?section=complexes', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Database, labelKey: 'nav.management.databases', href: '/assets?section=databases', roles: ['employee', 'agent', 'manager', 'admin'] },
+      ],
+      roles: ['employee', 'agent', 'manager', 'admin'],
+    },
+    {
+      icon: Wrench,
+      labelKey: 'nav.tools',
+      items: [
+        { icon: BriefcaseBusiness, labelKey: 'nav.tools.projects', href: '/assets?section=projects', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: StickyNote, labelKey: 'nav.tools.reminders', href: '/assets?section=reminders', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Rss, labelKey: 'nav.tools.rssFeed', href: '/assets?section=rss-feed', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: BookOpen, labelKey: 'nav.tools.knowledgeBase', href: '/knowledge', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: CalendarCheck, labelKey: 'nav.tools.bookings', href: '/assets?section=bookings', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: ClipboardCheck, labelKey: 'nav.tools.reports', href: '/reports/manage', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Bookmark, labelKey: 'nav.tools.savedSearches', href: '/assets?section=saved-searches', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Map, labelKey: 'nav.tools.cartography', href: '/assets?section=cartography', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: PieChart, labelKey: 'nav.tools.detailedReports', href: '/reports', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: MapPin, labelKey: 'nav.tools.ipAddressing', href: '/assets?section=ip-addressing', roles: ['employee', 'agent', 'manager', 'admin'] },
       ],
       roles: ['employee', 'agent', 'manager', 'admin'],
     },
@@ -82,18 +224,40 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
       icon: Users,
       labelKey: 'nav.administration',
       items: [
-        { icon: Users, labelKey: 'nav.users', href: '/admin/users', roles: ['admin'] },
+        { icon: UserRound, labelKey: 'nav.users', href: '/admin/users', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: UsersRound, labelKey: 'nav.administration.groups', href: '/admin/users?section=groups', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Layers, labelKey: 'nav.administration.organizations', href: '/admin/departments', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: BookOpen, labelKey: 'nav.administration.rules', href: '/admin/sla', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: NotebookTabs, labelKey: 'nav.administration.directories', href: '/admin/categories', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: UserCog, labelKey: 'nav.administration.profiles', href: '/admin/users?section=profiles', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: ListTodo, labelKey: 'nav.administration.notificationQueue', href: '/notifications?section=queue', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Logs, labelKey: 'nav.administration.logs', href: '/admin/users?section=logs', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: CloudDownload, labelKey: 'nav.administration.equipment', href: '/assets?section=equipment', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Settings2, labelKey: 'nav.administration.glpiInventory', href: '/assets?section=glpi-inventory', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: FilePenLine, labelKey: 'nav.administration.forms', href: '/admin/categories?section=forms', roles: ['employee', 'agent', 'manager', 'admin'] },
       ],
-      roles: ['admin'],
+      roles: ['employee', 'agent', 'manager', 'admin'],
     },
     { icon: MessagesSquare, labelKey: 'nav.messages', href: '/chat', roles: ['employee', 'agent', 'manager', 'admin'] },
+    { icon: Video, labelKey: 'nav.videoConferences', href: '/meetings', roles: ['employee', 'agent', 'manager', 'admin'] },
     { icon: MessageSquare, labelKey: 'nav.aiChat', href: '/ai-chat', roles: ['employee', 'agent', 'manager', 'admin'] },
     { icon: BellRing, labelKey: 'nav.notifications', href: '/notifications', roles: ['employee', 'agent', 'manager', 'admin'] },
     {
       icon: Settings,
       labelKey: 'nav.settings',
       items: [
-        { icon: Key, labelKey: 'nav.2fa', href: '/settings/2fa', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: PenLine, labelKey: 'nav.settings.dropdowns', href: '/settings/dropdowns', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Component, labelKey: 'nav.settings.components', href: '/settings/components', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: BellRing, labelKey: 'nav.settings.notifications', href: '/settings/notifications', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: ClipboardCheck, labelKey: 'nav.settings.serviceLevels', href: '/admin/sla', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: SlidersHorizontal, labelKey: 'nav.settings.general', href: '/settings/general', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Fingerprint, labelKey: 'nav.settings.uniqueField', href: '/settings/unique-field', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Workflow, labelKey: 'nav.settings.automaticActions', href: '/settings/automatic-actions', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: LogIn, labelKey: 'nav.settings.authentication', href: '/settings/2fa', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Inbox, labelKey: 'nav.settings.receivers', href: '/settings/receivers', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: LinkIcon, labelKey: 'nav.settings.externalLinks', href: '/settings/external-links', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Puzzle, labelKey: 'nav.settings.plugins', href: '/settings/plugins', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Car, labelKey: 'nav.settings.objectManagement', href: '/settings/object-management', roles: ['employee', 'agent', 'manager', 'admin'] },
       ],
       roles: ['employee', 'agent', 'manager', 'admin'],
     },
@@ -130,34 +294,91 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
       .slice(0, 2);
   };
 
-  const renderNavItem = (item: NavItem, index: number, isSubItem = false) => (
-    <motion.div
-      key={item.href}
-      initial={{ x: -20, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      transition={{ delay: index * 0.05 }}
-      whileHover={{ x: 4 }}
-    >
-      <Link
-        to={item.href}
-        title={collapsed ? t(item.labelKey) : undefined}
-        className={cn(
-          'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
-          collapsed && 'justify-center px-2',
-          location.pathname === item.href
-            ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
-            : cn('text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground', 
-                 isSubItem && 'text-sidebar-foreground/50 font-normal')
-        )}
+  const getItemPath = (href: string) => href.split('?')[0];
+
+  const isItemActive = (item: NavItem) => {
+    const currentHref = `${location.pathname}${location.search}`;
+    return item.href.includes('?') ? currentHref === item.href : location.pathname === getItemPath(item.href);
+  };
+
+  const handleResizeStart = (event: PointerEvent<HTMLButtonElement>) => {
+    if (collapsed || !isResizable) return;
+
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+
+    const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
+      const nextWidth = Math.min(
+        Math.max(startWidth + moveEvent.clientX - startX, SIDEBAR_MIN_WIDTH),
+        SIDEBAR_MAX_WIDTH
+      );
+
+      setSidebarWidth(nextWidth);
+      localStorage.setItem('qg-sidebar-width', String(nextWidth));
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp, { once: true });
+  };
+
+  const renderNavItem = (item: NavItem, index: number, isSubItem = false) => {
+    const active = isItemActive(item);
+
+    return (
+      <motion.div
+        key={item.href}
+        initial={{ x: -20, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={{ delay: index * 0.03 }}
+        whileHover={{ x: isSubItem ? 3 : 4 }}
       >
-        <item.icon className={cn("h-5 w-5 shrink-0", isSubItem && "h-4 w-4")} />
-        {!collapsed && <span className={cn(isSubItem && "text-xs")}>{t(item.labelKey)}</span>}
-      </Link>
-    </motion.div>
-  );
+        <Link
+          to={item.href}
+          title={collapsed ? t(item.labelKey) : undefined}
+          className={cn(
+            'group/nav-item relative flex w-full min-w-0 gap-2.5 rounded-2xl text-sm font-medium transition-all duration-300 ease-out',
+            isSubItem ? 'items-start' : 'items-center',
+            isSubItem ? 'px-2.5 py-1.5' : 'px-3 py-2',
+            collapsed && 'justify-center px-2 py-2',
+            active
+              ? 'border-l-[3px] border-l-blue-500 bg-gradient-to-r from-blue-500/20 via-sidebar-accent/85 to-sidebar-accent/35 text-sidebar-accent-foreground shadow-[0_2px_10px_rgba(59,130,246,0.16)] backdrop-blur-md'
+              : cn(
+                  'border-l-[3px] border-l-transparent bg-transparent text-sidebar-foreground/68 hover:bg-sidebar-accent/45 hover:text-sidebar-foreground hover:shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:backdrop-blur-sm',
+                  isSubItem && 'text-sidebar-foreground/58 font-normal'
+                )
+          )}
+        >
+          <item.icon
+            strokeWidth={1.8}
+            className={cn(
+              'shrink-0 transition-all duration-300 ease-out group-hover/nav-item:scale-110',
+              active ? 'text-blue-500 drop-shadow-[0_0_8px_rgba(59,130,246,0.35)]' : 'text-current',
+              isSubItem ? 'mt-0.5 h-4 w-4' : 'h-5 w-5'
+            )}
+          />
+          {!collapsed && (
+            <span className={cn('min-w-0 flex-1 whitespace-normal break-words leading-5', isSubItem && 'text-xs')}>
+              {t(item.labelKey)}
+            </span>
+          )}
+        </Link>
+      </motion.div>
+    );
+  };
 
   const renderNavGroup = (group: NavGroup, index: number) => {
-    const isOpen = openGroups[group.labelKey] || false;
+    const isGroupActive = group.items.some((item) => isItemActive(item));
+    const isOpen = openGroups[group.labelKey] ?? isGroupActive;
     return (
       <motion.div
         key={group.labelKey}
@@ -168,26 +389,38 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
         <button
           onClick={() => toggleGroup(group.labelKey)}
           className={cn(
-            'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all duration-200 w-full text-left',
+            'group/nav-group flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm font-medium transition-all duration-300 ease-out',
             collapsed && 'justify-center px-2',
-            isOpen && !collapsed ? 'bg-sidebar-accent/20 text-sidebar-foreground' : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+            isOpen && !collapsed
+              ? 'bg-sidebar-accent/25 text-sidebar-foreground shadow-[0_2px_8px_rgba(0,0,0,0.04)] backdrop-blur-sm'
+              : 'bg-transparent text-sidebar-foreground/72 hover:bg-sidebar-accent/45 hover:text-sidebar-foreground hover:shadow-[0_2px_8px_rgba(0,0,0,0.04)]',
             !collapsed && 'justify-between'
           )}
           title={collapsed ? t(group.labelKey) : undefined}
         >
           <div className="flex items-center gap-3">
-            <group.icon className="h-5 w-5 shrink-0" />
+            <group.icon strokeWidth={1.8} className="h-5 w-5 shrink-0 transition-transform duration-300 group-hover/nav-group:scale-110" />
             {!collapsed && <span>{t(group.labelKey)}</span>}
           </div>
           {!collapsed && (
-            isOpen ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />
+            isOpen ? <ChevronDown strokeWidth={1.8} className="h-4 w-4 opacity-50 transition-transform duration-300" /> : <ChevronRight strokeWidth={1.8} className="h-4 w-4 opacity-50 transition-transform duration-300" />
           )}
         </button>
-        {isOpen && !collapsed && (
-          <div className="ml-6 mt-1 space-y-1 border-l border-sidebar-border/50 pl-2">
-            {group.items.filter(item => isItemVisible(item)).map((item, subIndex) => renderNavItem(item, subIndex))}
-          </div>
-        )}
+        <AnimatePresence initial={false}>
+          {isOpen && !collapsed && (
+            <motion.div
+              initial={{ height: 0, opacity: 0, y: -4 }}
+              animate={{ height: 'auto', opacity: 1, y: 0 }}
+              exit={{ height: 0, opacity: 0, y: -4 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="ml-4 mt-1.5 space-y-0.5 border-l border-sidebar-border/35 pl-2">
+                {group.items.filter(item => isItemVisible(item)).map((item, subIndex) => renderNavItem(item, subIndex, true))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     );
   };
@@ -196,21 +429,33 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
     <motion.div 
       initial={{ x: -20, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
+      style={!collapsed && isResizable ? { width: sidebarWidth } : undefined}
       className={cn(
-        'flex flex-col h-full bg-sidebar border-r border-sidebar-border transition-all duration-300',
-        collapsed ? 'w-[84px]' : 'w-64'
+        'relative flex flex-col h-full border-r border-sidebar-border/70 bg-[linear-gradient(180deg,hsl(var(--sidebar-background))_0%,hsl(var(--sidebar-accent)/0.42)_48%,hsl(var(--sidebar-background))_100%)] shadow-[8px_0_24px_rgba(15,23,42,0.04)] backdrop-blur-xl transition-all duration-300',
+        collapsed ? 'w-[84px]' : isResizable ? 'shrink-0' : 'w-64'
       )}
     >
+      {!collapsed && isResizable && (
+        <button
+          type="button"
+          aria-label="Изменить ширину бокового меню"
+          onPointerDown={handleResizeStart}
+          className="absolute inset-y-0 -right-1 z-20 w-2 cursor-col-resize bg-transparent transition-colors hover:bg-primary/20 active:bg-primary/30"
+        />
+      )}
+
       {/* Logo */}
       <div className={cn('p-4', collapsed && 'px-3')}>
         <div className={cn('flex items-center gap-2', collapsed ? 'justify-center' : 'justify-between')}>
-          <Link to="/dashboard" className={cn('flex items-center gap-3 min-w-0', collapsed && 'justify-center')}>
-            <img src={logo} alt="Qazaq Generation" className="h-12 w-auto shrink-0" />
-            {!collapsed && <div className="min-w-0">
-              <h1 className="font-bold text-sidebar-foreground truncate">Qazaq Generation</h1>
-              <p className="text-xs text-sidebar-foreground/60">ITSM & Service Desk</p>
-            </div>}
-          </Link>
+          {!collapsed && (
+            <Link to="/dashboard" className="flex min-w-0 items-center gap-3">
+              <img src={logo} alt="Qazaq Generation" className="h-12 w-auto shrink-0" />
+              <div className="min-w-0">
+                <h1 className="font-bold text-sidebar-foreground truncate">Qazaq Generation</h1>
+                <p className="text-xs text-sidebar-foreground/60">ITSM & Service Desk</p>
+              </div>
+            </Link>
+          )}
           {onToggleCollapse && (
             <Button
               type="button"

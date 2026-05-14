@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { db } from '../db/index.js';
-import { tickets, ticketComments, ticketHistory, ticketSla, ticketAttachments, profiles, slaPolicies } from '../db/schema.js';
+import { tickets, ticketComments, ticketHistory, ticketSla, ticketAttachments, profiles, slaPolicies, users } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { notifyUser, notifyUsers } from '../services/notificationService.js';
 
@@ -86,8 +86,19 @@ router.get('/:id', async (req, res) => {
 // Create ticket
 router.post('/', async (req, res) => {
   try {
-    const { title, description, priority, categoryId, groupId } = req.body;
+    const { title, description, priority, categoryId, groupId, requesterId, assigneeId } = req.body;
     const ticketPriority = priority || 'medium';
+    const canChooseRequester = ['agent', 'admin', 'manager'].includes(req.user!.role);
+    const canChooseAssignee = canChooseRequester;
+    const ticketRequesterId = canChooseRequester && requesterId ? requesterId : req.user!.userId;
+    const ticketAssigneeId = canChooseAssignee && assigneeId ? assigneeId : null;
+
+    const [requester] = await db.select({ id: users.id }).from(users).where(eq(users.id, ticketRequesterId)).limit(1);
+    if (!requester) return res.status(400).json({ error: 'Заявитель не найден' });
+    if (ticketAssigneeId) {
+      const [assignee] = await db.select({ id: users.id }).from(users).where(eq(users.id, ticketAssigneeId)).limit(1);
+      if (!assignee) return res.status(400).json({ error: 'Исполнитель не найден' });
+    }
 
     const [ticket] = await db.insert(tickets).values({
       title,
@@ -95,8 +106,20 @@ router.post('/', async (req, res) => {
       priority: ticketPriority,
       categoryId,
       groupId,
-      requesterId: req.user!.userId,
+      requesterId: ticketRequesterId,
+      assigneeId: ticketAssigneeId,
+      status: ticketAssigneeId ? 'assigned' : 'new',
     }).returning();
+
+    if (ticketAssigneeId) {
+      notifyUser({
+        userId: ticketAssigneeId,
+        type: 'ticket_assigned',
+        title: 'Жаңа тикет тағайындалды',
+        message: `"${title}" тикеті сізге тағайындалды`,
+        payload: { ticketId: ticket.id },
+      });
+    }
 
     // Auto-calculate SLA based on sla_policies
     try {

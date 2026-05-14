@@ -14,9 +14,24 @@ import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 
+interface Category {
+  id: string;
+  name: string;
+}
+
+interface Profile {
+  user_id?: string;
+  userId?: string;
+  name: string;
+  email: string;
+}
+
+const NO_CATEGORY_VALUE = 'none';
+const NO_ASSIGNEE_VALUE = 'unassigned';
+
 export default function NewTicket() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const { t } = useLanguage();
   const { toast } = useToast();
   
@@ -24,12 +39,31 @@ export default function NewTicket() {
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('medium');
   const [categoryId, setCategoryId] = useState('');
+  const [requesterId, setRequesterId] = useState('');
+  const [assigneeId, setAssigneeId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const canChooseRequester = role === 'agent' || role === 'admin' || role === 'manager';
 
-  const { data: categories } = useQuery({
+  const { data: categoriesData } = useQuery({
     queryKey: ['categories'],
     queryFn: () => api.getCategories(),
   });
+  const categories: Category[] = Array.isArray(categoriesData) ? categoriesData : [];
+
+  const { data: profilesData } = useQuery({
+    queryKey: ['profiles'],
+    queryFn: () => api.getProfiles(),
+    enabled: canChooseRequester,
+  });
+  const profiles = Array.isArray(profilesData)
+    ? profilesData
+        .map((profile: Profile) => ({
+          id: profile.user_id || profile.userId || '',
+          name: profile.name,
+          email: profile.email,
+        }))
+        .filter((profile) => profile.id)
+    : [];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,6 +77,8 @@ export default function NewTicket() {
       const data = await api.createTicket({
         title, description, priority,
         categoryId: categoryId || null,
+        requesterId: canChooseRequester ? requesterId || user.id : user.id,
+        assigneeId: canChooseRequester && assigneeId ? assigneeId : null,
       });
 
       toast({ title: t('common.success'), description: t('ticket.form.submit') });
@@ -85,6 +121,46 @@ export default function NewTicket() {
                 <Textarea id="description" placeholder={t('ticket.form.descriptionPlaceholder')} value={description} onChange={(e) => setDescription(e.target.value)} rows={6} disabled={isSubmitting} />
               </motion.div>
 
+              {canChooseRequester && (
+                <motion.div className="grid grid-cols-2 gap-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.38 }}>
+                  <div className="space-y-2">
+                    <Label htmlFor="requester">{t('ticket.form.requester')}</Label>
+                    <Select value={requesterId || user.id} onValueChange={setRequesterId} disabled={isSubmitting}>
+                      <SelectTrigger id="requester"><SelectValue placeholder={t('ticket.form.selectRequester')} /></SelectTrigger>
+                      <SelectContent>
+                        {profiles.length === 0 ? (
+                          <SelectItem value={user.id}>{user.name || user.email}</SelectItem>
+                        ) : (
+                          profiles.map((profile) => (
+                            <SelectItem key={profile.id} value={profile.id}>
+                              {profile.name}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="assignee">{t('ticket.form.assignee')}</Label>
+                    <Select
+                      value={assigneeId || NO_ASSIGNEE_VALUE}
+                      onValueChange={(value) => setAssigneeId(value === NO_ASSIGNEE_VALUE ? '' : value)}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger id="assignee"><SelectValue placeholder={t('ticket.form.selectAssignee')} /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_ASSIGNEE_VALUE}>{t('ticket.detail.unassigned')}</SelectItem>
+                        {profiles.map((profile) => (
+                          <SelectItem key={profile.id} value={profile.id}>
+                            {profile.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </motion.div>
+              )}
+
               <motion.div className="grid grid-cols-2 gap-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
                 <div className="space-y-2">
                   <Label htmlFor="priority">{t('ticket.form.priority')}</Label>
@@ -100,10 +176,15 @@ export default function NewTicket() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="category">{t('ticket.form.category')}</Label>
-                  <Select value={categoryId} onValueChange={setCategoryId} disabled={isSubmitting}>
+                  <Select
+                    value={categoryId || NO_CATEGORY_VALUE}
+                    onValueChange={(value) => setCategoryId(value === NO_CATEGORY_VALUE ? '' : value)}
+                    disabled={isSubmitting}
+                  >
                     <SelectTrigger><SelectValue placeholder={t('ticket.form.selectCategory')} /></SelectTrigger>
                     <SelectContent>
-                      {categories?.map((category: any) => (
+                      <SelectItem value={NO_CATEGORY_VALUE}>{t('ticket.form.selectCategory')}</SelectItem>
+                      {categories.map((category) => (
                         <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
                       ))}
                     </SelectContent>

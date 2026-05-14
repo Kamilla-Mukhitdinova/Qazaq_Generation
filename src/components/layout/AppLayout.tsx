@@ -5,7 +5,6 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Loader2 } from 'lucide-react';
-import { AnimatedBackground } from '@/components/AnimatedBackground';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function AppLayout() {
@@ -39,9 +38,7 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen flex bg-background relative overflow-hidden">
-      <div className="pointer-events-none">
-        <AnimatedBackground />
-      </div>
+      <div className="pointer-events-none fixed inset-0 bg-gradient-to-br from-background via-background to-secondary/20" />
       {/* Desktop Sidebar */}
       <div className="hidden lg:block relative z-10">
         <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
@@ -58,8 +55,6 @@ export default function AppLayout() {
       <div className="flex-1 flex flex-col min-w-0 relative z-10">
         <Header
           onMenuClick={() => setMobileMenuOpen(true)}
-          sidebarCollapsed={sidebarCollapsed}
-          onToggleSidebar={toggleSidebar}
         />
         <main className="flex-1 overflow-auto p-6">
           <AnimatePresence mode="wait">

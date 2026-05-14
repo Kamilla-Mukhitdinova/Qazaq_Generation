@@ -13,6 +13,8 @@ import documentRoutes from './routes/documents.js';
 import kbRoutes from './routes/knowledge-base.js';
 import chatRoutes from './routes/chat.js';
 import assetRoutes from './routes/assets.js';
+import meetingRoutes from './routes/meetings.js';
+import { ensureChatSchema } from './db/ensureChatSchema.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -24,12 +26,12 @@ function buildAllowedOrigins() {
     .filter(Boolean);
 
   // Common local dev origins (localhost + LAN dev)
-  const defaults = ['http://localhost:8080', 'http://127.0.0.1:8080'];
+  const defaults = ['http://localhost:8080', 'http://localhost:8081', 'http://127.0.0.1:8080', 'http://127.0.0.1:8081'];
   return Array.from(new Set([...configured, ...defaults]));
 }
 
 const allowedOrigins = buildAllowedOrigins();
-const localDevOriginPattern = /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}):8080$/;
+const localDevOriginPattern = /^https?:\/\/(localhost|127\.0\.0\.1|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d{4,5}$/;
 
 app.use(helmet());
 app.use(cors({
@@ -60,15 +62,18 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/kb', kbRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/assets', assetRoutes);
+app.use('/api/meetings', meetingRoutes);
 // Error handler
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
+await ensureChatSchema();
+
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Health check: http://localhost:${PORT}/api/health`);
 });
 
 export default app;

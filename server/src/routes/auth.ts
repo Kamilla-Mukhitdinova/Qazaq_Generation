@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { createHash, randomBytes } from 'crypto';
 import * as OTPAuth from 'otpauth';
 import * as QRCode from 'qrcode';
 import { eq } from 'drizzle-orm';
@@ -21,6 +22,27 @@ const loginSchema = z.object({
   email: z.string().email(),
   password: z.string(),
 });
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(32),
+  password: z.string().min(6).max(128),
+});
+
+type Pending2FAPayload = {
+  userId: string;
+  pending2FA?: boolean;
+};
+
+const resetTokens = new Map<string, { userId: string; expiresAt: number }>();
+const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
+
+function hashResetToken(token: string) {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 function signToken(userId: string, email: string, role: string) {
   return jwt.sign({ userId, email, role }, process.env.JWT_SECRET!, {
@@ -54,7 +76,7 @@ router.post('/register', async (req, res) => {
 
     const token = signToken(user.id, email, 'employee');
     return res.status(201).json({ token, user: { id: user.id, email, name, role: 'employee' } });
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: err.errors[0].message });
     }
@@ -92,7 +114,7 @@ router.post('/login', async (req, res) => {
 
     const token = signToken(user.id, email, role);
     return res.json({ token, user: { id: user.id, email, name: profile?.name, role } });
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: err.errors[0].message });
     }
@@ -101,11 +123,65 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// --- Forgot Password ---
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = forgotPasswordSchema.parse(req.body);
+
+    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    if (user) {
+      const token = randomBytes(32).toString('hex');
+      const tokenHash = hashResetToken(token);
+
+      resetTokens.set(tokenHash, {
+        userId: user.id,
+        expiresAt: Date.now() + RESET_TOKEN_TTL_MS,
+      });
+
+      console.info(`[password-reset] ${email}: ${token}`);
+    }
+
+    return res.json({ success: true });
+  } catch (err: unknown) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: err.errors[0].message });
+    }
+    console.error('Forgot password error:', err);
+    return res.status(500).json({ error: 'Серверде қате' });
+  }
+});
+
+// --- Reset Password ---
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, password } = resetPasswordSchema.parse(req.body);
+    const tokenHash = hashResetToken(token);
+    const resetToken = resetTokens.get(tokenHash);
+
+    if (!resetToken || resetToken.expiresAt < Date.now()) {
+      resetTokens.delete(tokenHash);
+      return res.status(400).json({ error: 'Код восстановления недействителен или истек' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    await db.update(users).set({ passwordHash }).where(eq(users.id, resetToken.userId));
+    resetTokens.delete(tokenHash);
+
+    return res.json({ success: true });
+  } catch (err: unknown) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: err.errors[0].message });
+    }
+    console.error('Reset password error:', err);
+    return res.status(500).json({ error: 'Серверде қате' });
+  }
+});
+
 // --- Verify 2FA ---
 router.post('/verify-2fa', async (req, res) => {
   try {
     const { tempToken, code } = req.body;
-    const payload = jwt.verify(tempToken, process.env.JWT_SECRET!) as any;
+    const payload = jwt.verify(tempToken, process.env.JWT_SECRET!) as Pending2FAPayload;
 
     if (!payload.pending2FA) {
       return res.status(400).json({ error: 'Жарамсыз токен' });

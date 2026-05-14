@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { eq } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { users } from '../db/schema.js';
 
 export interface AuthPayload {
   userId: string;
@@ -15,16 +18,25 @@ declare global {
   }
 }
 
-export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) {
+  const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+  if (!header?.startsWith('Bearer ') && !queryToken) {
     return res.status(401).json({ error: 'Токен қажет' });
   }
 
   try {
-    const token = header.slice(7);
+    const token = header?.startsWith('Bearer ') ? header.slice(7) : queryToken!;
     const payload = jwt.verify(token, process.env.JWT_SECRET!) as AuthPayload;
-    req.user = payload;
+    const [user] = await db.select().from(users).where(eq(users.id, payload.userId)).limit(1);
+    if (!user) {
+      return res.status(401).json({ error: 'Пользователь не найден. Войдите заново.' });
+    }
+
+    req.user = {
+      ...payload,
+      email: user.email,
+    };
     next();
   } catch {
     return res.status(401).json({ error: 'Жарамсыз токен' });

@@ -11,7 +11,7 @@ export function ThemeToggle() {
       variant="outline"
       size="icon"
       onClick={toggleTheme}
-      className="relative h-10 w-10 overflow-hidden border-white/55 bg-white/62 text-slate-800 shadow-[0_10px_30px_hsl(218_44%_34%/0.10)] backdrop-blur-xl hover:border-gold/35 hover:bg-white/75 focus-visible:ring-gold/50 dark:border-white/18 dark:bg-white/12 dark:text-white dark:shadow-[0_10px_30px_hsl(222_47%_4%/0.16)] dark:backdrop-blur-md dark:hover:bg-white/18"
+      className="relative h-9 w-9 overflow-hidden rounded-xl border-white/35 bg-white/40 text-slate-700 shadow-[0_8px_22px_hsl(218_44%_34%/0.07)] backdrop-blur-xl hover:border-white/55 hover:bg-white/58 hover:text-slate-900 focus-visible:ring-gold/40 dark:border-white/12 dark:bg-slate-950/32 dark:text-white/88 dark:shadow-[0_8px_24px_hsl(222_47%_4%/0.18)] dark:hover:bg-slate-900/46 dark:hover:text-white"
     >
       <motion.div
         initial={false}
@@ -22,9 +22,9 @@ export function ThemeToggle() {
         transition={{ duration: 0.3, ease: "easeInOut" }}
       >
         {theme === 'dark' ? (
-          <Moon className="h-5 w-5" />
+          <Moon className="h-4 w-4" />
         ) : (
-          <Sun className="h-5 w-5" />
+          <Sun className="h-4 w-4" />
         )}
       </motion.div>
       <span className="sr-only">Toggle theme</span>

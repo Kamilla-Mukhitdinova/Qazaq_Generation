@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { profiles, userRoles, users } from '../db/schema.js';
+import { profiles, userRoles } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 
 const router = Router();
 router.use(authMiddleware);
 
-// Get all profiles (admin/manager)
-router.get('/', requireRole('admin', 'manager', 'agent'), async (req, res) => {
+// Get all profiles for chat/user pickers.
+router.get('/', async (req, res) => {
   try {
     const allProfiles = await db.select().from(profiles);
     return res.json(allProfiles);

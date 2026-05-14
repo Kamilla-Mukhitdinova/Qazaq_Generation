@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Search, Plus, Menu, MessageSquare, Check, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Bell, Search, Plus, Menu, MessageSquare, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -24,8 +24,6 @@ import { enUS, kk, ru } from 'date-fns/locale';
 
 interface HeaderProps {
   onMenuClick?: () => void;
-  sidebarCollapsed?: boolean;
-  onToggleSidebar?: () => void;
 }
 
 interface Notification {
@@ -38,7 +36,7 @@ interface Notification {
   payload_json: any;
 }
 
-export default function Header({ onMenuClick, sidebarCollapsed = false, onToggleSidebar }: HeaderProps) {
+export default function Header({ onMenuClick }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -135,17 +133,6 @@ export default function Header({ onMenuClick, sidebarCollapsed = false, onToggle
       <div className="flex items-center gap-1 md:gap-2">
         <LanguageSelector />
         <ThemeToggle />
-        {onToggleSidebar && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="hidden lg:flex"
-            title={sidebarCollapsed ? t('layout.expandSidebar') : t('layout.collapseSidebar')}
-            onClick={onToggleSidebar}
-          >
-            {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
-          </Button>
-        )}
 
         {(role === 'agent' || role === 'manager' || role === 'admin') && (
           <Button variant="ghost" size="icon" onClick={() => navigate('/ai-chat')} className="hidden md:flex">

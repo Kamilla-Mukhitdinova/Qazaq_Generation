@@ -1,22 +1,47 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { format } from 'date-fns';
+import { motion } from 'framer-motion';
+import {
+  AppWindow,
+  Boxes,
+  Cable,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Download,
+  FileDown,
+  Filter,
+  HardDrive,
+  Key,
+  Monitor,
+  Mouse,
+  Package,
+  Pencil,
+  Plus,
+  Printer,
+  RefreshCw,
+  Search,
+  Server,
+  Trash2,
+  Wifi,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { toast } from '@/hooks/use-toast';
-import { Plus, Search, Monitor, Server, Key, Wifi, Mouse, Pencil, Trash2, Package, Download } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { format } from 'date-fns';
-import { motion } from 'framer-motion';
+import { toast } from '@/hooks/use-toast';
 
 const ASSET_TYPES = ['hardware', 'software', 'license', 'network', 'peripheral'] as const;
 const ASSET_STATUSES = ['active', 'in_stock', 'maintenance', 'retired', 'disposed'] as const;
@@ -24,9 +49,59 @@ const ASSET_STATUSES = ['active', 'in_stock', 'maintenance', 'retired', 'dispose
 type AssetType = typeof ASSET_TYPES[number];
 type AssetStatus = typeof ASSET_STATUSES[number];
 
+type NormalizedAsset = {
+  id: string;
+  name: string;
+  asset_type: AssetType;
+  status: AssetStatus;
+  serial_number: string;
+  inventory_number: string;
+  manufacturer: string;
+  model: string;
+  location: string;
+  assigned_to_name: string;
+  department_id: string;
+  purchase_date: string;
+  warranty_expiry: string;
+  purchase_cost: string;
+  notes: string;
+};
+
+interface AssetForm {
+  name: string;
+  asset_type: AssetType;
+  status: AssetStatus;
+  serial_number: string;
+  inventory_number: string;
+  manufacturer: string;
+  model: string;
+  location: string;
+  department_id: string;
+  purchase_date: string;
+  warranty_expiry: string;
+  purchase_cost: string;
+  notes: string;
+}
+
+const emptyForm: AssetForm = {
+  name: '',
+  asset_type: 'hardware',
+  status: 'in_stock',
+  serial_number: '',
+  inventory_number: '',
+  manufacturer: '',
+  model: '',
+  location: '',
+  department_id: '',
+  purchase_date: '',
+  warranty_expiry: '',
+  purchase_cost: '',
+  notes: '',
+};
+
 const typeIcons: Record<AssetType, typeof Monitor> = {
   hardware: Server,
-  software: Monitor,
+  software: AppWindow,
   license: Key,
   network: Wifi,
   peripheral: Mouse,
@@ -49,52 +124,76 @@ const statusLabels: Record<AssetStatus, Record<string, string>> = {
 };
 
 const statusColors: Record<AssetStatus, string> = {
-  active: 'bg-green-500/10 text-green-700 border-green-500/20',
-  in_stock: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
-  maintenance: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20',
+  active: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-300',
+  in_stock: 'bg-sky-500/10 text-sky-700 border-sky-500/20 dark:text-sky-300',
+  maintenance: 'bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-300',
   retired: 'bg-muted text-muted-foreground border-border',
   disposed: 'bg-destructive/10 text-destructive border-destructive/20',
 };
 
-interface AssetForm {
-  name: string;
-  asset_type: AssetType;
-  status: AssetStatus;
-  serial_number: string;
-  inventory_number: string;
-  manufacturer: string;
-  model: string;
-  location: string;
-  department_id: string;
-  purchase_date: string;
-  warranty_expiry: string;
-  purchase_cost: string;
-  notes: string;
+const sectionConfig: Record<string, { labelKey: string; title: string; type: AssetType | 'all'; icon: typeof Monitor }> = {
+  panel: { labelKey: 'nav.assets.panel', title: 'Панель активов', type: 'all', icon: Package },
+  computers: { labelKey: 'nav.assets.computers', title: 'Компьютеры', type: 'hardware', icon: Monitor },
+  monitors: { labelKey: 'nav.assets.monitors', title: 'Мониторы', type: 'peripheral', icon: Monitor },
+  software: { labelKey: 'nav.assets.software', title: 'Программное обеспечение', type: 'software', icon: AppWindow },
+  'network-devices': { labelKey: 'nav.assets.networkDevices', title: 'Сетевые устройства', type: 'network', icon: Wifi },
+  printers: { labelKey: 'nav.assets.printers', title: 'Принтеры', type: 'peripheral', icon: Printer },
+  cartridges: { labelKey: 'nav.assets.cartridges', title: 'Картриджи', type: 'peripheral', icon: HardDrive },
+  consumables: { labelKey: 'nav.assets.consumables', title: 'Расходные материалы', type: 'peripheral', icon: Boxes },
+  cables: { labelKey: 'nav.assets.cables', title: 'Кабели', type: 'peripheral', icon: Cable },
+  global: { labelKey: 'nav.assets.global', title: 'Глобально', type: 'all', icon: Package },
+};
+
+const sectionOrder = ['panel', 'computers', 'monitors', 'software', 'network-devices', 'printers', 'cartridges', 'consumables', 'cables', 'global'];
+const pageSizeOptions = [10, 25, 50, 100];
+
+function normalizeAsset(asset: any): NormalizedAsset {
+  return {
+    id: asset.id,
+    name: asset.name || '',
+    asset_type: asset.asset_type || asset.assetType || 'hardware',
+    status: asset.status || 'in_stock',
+    serial_number: asset.serial_number || asset.serialNumber || '',
+    inventory_number: asset.inventory_number || asset.inventoryNumber || '',
+    manufacturer: asset.manufacturer || '',
+    model: asset.model || '',
+    location: asset.location || '',
+    assigned_to_name: asset.assigned_to_name || asset.assignedToName || '',
+    department_id: asset.department_id || asset.departmentId || '',
+    purchase_date: asset.purchase_date || asset.purchaseDate || '',
+    warranty_expiry: asset.warranty_expiry || asset.warrantyExpiry || '',
+    purchase_cost: asset.purchase_cost?.toString() || asset.purchaseCost?.toString() || '',
+    notes: asset.notes || '',
+  };
 }
 
-const emptyForm: AssetForm = {
-  name: '', asset_type: 'hardware', status: 'in_stock', serial_number: '',
-  inventory_number: '', manufacturer: '', model: '', location: '',
-  department_id: '', purchase_date: '', warranty_expiry: '', purchase_cost: '', notes: '',
-};
+function getAssetIp(asset: NormalizedAsset) {
+  const candidates = [asset.location, asset.notes, asset.name].join(' ');
+  return candidates.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g)?.join('\n') || '-';
+}
 
 export default function AssetManagement() {
   const { language, t } = useLanguage();
   const { role } = useAuth();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const section = searchParams.get('section') || 'computers';
+  const currentSection = sectionConfig[section] || sectionConfig.computers;
   const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [pageSize, setPageSize] = useState(50);
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<AssetForm>(emptyForm);
 
   const canManage = role === 'admin' || role === 'manager';
 
-  const { data: assets = [], isLoading } = useQuery({
+  const { data: rawAssets = [], isLoading } = useQuery({
     queryKey: ['assets'],
     queryFn: async () => {
-      const result = await api.getAssets();
+      const result = await api.getAssets({ limit: '100' });
       return result.data || [];
     },
   });
@@ -103,6 +202,8 @@ export default function AssetManagement() {
     queryKey: ['departments'],
     queryFn: () => api.getDepartments(),
   });
+
+  const assets = useMemo(() => rawAssets.map(normalizeAsset), [rawAssets]);
 
   const saveMutation = useMutation({
     mutationFn: async (formData: AssetForm) => {
@@ -126,85 +227,149 @@ export default function AssetManagement() {
     mutationFn: (id: string) => api.deleteAsset(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['assets'] });
+      setSelectedIds([]);
       toast({ title: t('assets.assetDeleted') });
     },
   });
 
-  const filtered = useMemo(() => {
-    return assets.filter((a: any) => {
-      const matchSearch = !search || a.name?.toLowerCase().includes(search.toLowerCase()) ||
-        a.serial_number?.toLowerCase().includes(search.toLowerCase()) ||
-        a.inventory_number?.toLowerCase().includes(search.toLowerCase());
-      const matchType = filterType === 'all' || a.asset_type === filterType;
-      const matchStatus = filterStatus === 'all' || a.status === filterStatus;
-      return matchSearch && matchType && matchStatus;
+  const visibleAssets = useMemo(() => {
+    return assets.filter((asset) => {
+      const sectionMatches = currentSection.type === 'all' || asset.asset_type === currentSection.type;
+      const query = search.toLowerCase().trim();
+      const searchMatches = !query || [
+        asset.name,
+        asset.serial_number,
+        asset.inventory_number,
+        asset.manufacturer,
+        asset.model,
+        asset.location,
+        asset.assigned_to_name,
+        asset.notes,
+      ].some((value) => value.toLowerCase().includes(query));
+      const statusMatches = filterStatus === 'all' || asset.status === filterStatus;
+      return sectionMatches && searchMatches && statusMatches;
     });
-  }, [assets, search, filterType, filterStatus]);
+  }, [assets, currentSection.type, filterStatus, search]);
 
-  const openEdit = (asset: any) => {
+  const totalPages = Math.max(1, Math.ceil(visibleAssets.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginatedAssets = visibleAssets.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const selectedOnPage = paginatedAssets.length > 0 && paginatedAssets.every((asset) => selectedIds.includes(asset.id));
+  const selectedRows = visibleAssets.filter((asset) => selectedIds.includes(asset.id));
+
+  const openEdit = (asset: NormalizedAsset) => {
     setEditingId(asset.id);
     setForm({
-      name: asset.name || '',
-      asset_type: asset.asset_type || 'hardware',
-      status: asset.status || 'in_stock',
-      serial_number: asset.serial_number || '',
-      inventory_number: asset.inventory_number || '',
-      manufacturer: asset.manufacturer || '',
-      model: asset.model || '',
-      location: asset.location || '',
-      department_id: asset.department_id || '',
-      purchase_date: asset.purchase_date || '',
-      warranty_expiry: asset.warranty_expiry || '',
-      purchase_cost: asset.purchase_cost?.toString() || '',
-      notes: asset.notes || '',
+      name: asset.name,
+      asset_type: asset.asset_type,
+      status: asset.status,
+      serial_number: asset.serial_number,
+      inventory_number: asset.inventory_number,
+      manufacturer: asset.manufacturer,
+      model: asset.model,
+      location: asset.location,
+      department_id: asset.department_id,
+      purchase_date: asset.purchase_date,
+      warranty_expiry: asset.warranty_expiry,
+      purchase_cost: asset.purchase_cost,
+      notes: asset.notes,
     });
     setDialogOpen(true);
   };
 
   const openCreate = () => {
     setEditingId(null);
-    setForm(emptyForm);
+    setForm({
+      ...emptyForm,
+      asset_type: currentSection.type === 'all' ? 'hardware' : currentSection.type,
+    });
     setDialogOpen(true);
   };
 
-  const exportData = (type: 'csv' | 'xlsx') => {
-    const headers = ['Name', 'Type', 'Status', 'Serial #', 'Inventory #', 'Manufacturer', 'Model', 'Location', 'Purchase Date', 'Warranty Expiry', 'Cost', 'Notes'];
-    const rows = filtered.map((a: any) => [
-      a.name || '', typeLabels[a.asset_type as AssetType]?.[language] || a.asset_type,
-      statusLabels[a.status as AssetStatus]?.[language] || a.status,
-      a.serial_number || '', a.inventory_number || '', a.manufacturer || '', a.model || '',
-      a.location || '', a.purchase_date || '', a.warranty_expiry || '',
-      a.purchase_cost?.toString() || '', a.notes || '',
+  const toggleSection = (nextSection: string) => {
+    setSearchParams({ section: nextSection });
+    setPage(1);
+    setSelectedIds([]);
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  };
+
+  const togglePageSelected = () => {
+    const pageIds = paginatedAssets.map((asset) => asset.id);
+    setSelectedIds((current) => {
+      if (selectedOnPage) return current.filter((id) => !pageIds.includes(id));
+      return [...new Set([...current, ...pageIds])];
+    });
+  };
+
+  const exportData = () => {
+    const headers = ['Наименование', 'Организация', 'Серийный номер', 'Инвентарный номер', 'Тип', 'Сетевая структура - IP', 'Модель', 'Пользователь', 'Комментарии', 'Операционная система'];
+    const rows = (selectedRows.length > 0 ? selectedRows : visibleAssets).map((asset) => [
+      asset.name,
+      'Qazaq Generation / ID Support',
+      asset.serial_number,
+      asset.inventory_number,
+      typeLabels[asset.asset_type]?.[language] || asset.asset_type,
+      getAssetIp(asset),
+      [asset.manufacturer, asset.model].filter(Boolean).join(' '),
+      asset.assigned_to_name,
+      asset.notes,
+      asset.asset_type === 'hardware' ? 'Linux / Windows' : '-',
     ]);
 
-    const escapeCSV = (v: string) => v.includes(',') || v.includes('"') || v.includes('\n') ? `"${v.replace(/"/g, '""')}"` : v;
-    const csvContent = '\uFEFF' + [headers.map(escapeCSV).join(','), ...rows.map(r => r.map(escapeCSV).join(','))].join('\n');
-    
+    const escapeCSV = (value: string) => /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+    const csvContent = '\uFEFF' + [headers.map(escapeCSV).join(','), ...rows.map((row) => row.map(escapeCSV).join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `assets_${format(new Date(), 'yyyy-MM-dd')}.csv`;
-    a.click();
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `assets_${section}_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    link.click();
     URL.revokeObjectURL(url);
     toast({ title: t('assets.exportDone') });
   };
 
+  const bulkDelete = async () => {
+    if (!canManage || selectedIds.length === 0) return;
+    await Promise.all(selectedIds.map((id) => api.deleteAsset(id)));
+    queryClient.invalidateQueries({ queryKey: ['assets'] });
+    setSelectedIds([]);
+    toast({ title: t('assets.assetDeleted') });
+  };
+
+  const toolbarButton = 'h-9 border-primary/30 bg-background text-primary hover:bg-primary/10';
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">{t('assets.title')}</h1>
-          <p className="text-muted-foreground mt-1">{t('assets.subtitle')}</p>
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>{t('nav.dashboard')}</span>
+            <span>/</span>
+            <span>{t('nav.assets')}</span>
+            <span>/</span>
+            <span className="font-medium text-foreground">{t(currentSection.labelKey) || currentSection.title}</span>
+          </div>
+          <h1 className="text-2xl font-bold tracking-normal text-foreground">{t(currentSection.labelKey) || currentSection.title}</h1>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => exportData('csv')} className="gap-2" disabled={filtered.length === 0}>
-            <Download className="h-4 w-4" />
-            {t('assets.exportCsv')}
-          </Button>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative min-w-[260px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              placeholder={t('common.search')}
+              className="h-10 pl-10"
+            />
+          </div>
           {canManage && (
-            <Button onClick={openCreate} className="gap-2">
+            <Button onClick={openCreate} className="h-10 gap-2">
               <Plus className="h-4 w-4" />
               {t('assets.addAsset')}
             </Button>
@@ -212,182 +377,283 @@ export default function AssetManagement() {
         </div>
       </div>
 
-      {/* Stats cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {ASSET_STATUSES.map(s => {
-          const count = assets.filter((a: any) => a.status === s).length;
-          return (
-            <Card key={s} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setFilterStatus(filterStatus === s ? 'all' : s)}>
-              <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold text-foreground">{count}</p>
-                <p className="text-xs text-muted-foreground">{statusLabels[s][language]}</p>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+      <div className="grid gap-4 xl:grid-cols-[230px_minmax(0,1fr)]">
+        <aside className="rounded-lg border bg-card p-2 shadow-sm">
+          <div className="px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">Активы</div>
+          <nav className="space-y-1">
+            {sectionOrder.map((item) => {
+              const config = sectionConfig[item];
+              const Icon = config.icon;
+              const count = assets.filter((asset) => config.type === 'all' || asset.asset_type === config.type).length;
+              const active = item === section;
+              return (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => toggleSection(item)}
+                  className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                    active ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{t(config.labelKey) || config.title}</span>
+                  </span>
+                  <span className={`ml-2 text-xs ${active ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{count}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4 flex flex-wrap gap-4 items-center">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder={t('common.search')} value={search} onChange={e => setSearch(e.target.value)} className="pl-10" />
+        <section className="min-w-0 rounded-lg border bg-card shadow-sm">
+          <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              {canManage && (
+                <Button variant="outline" className={toolbarButton} onClick={openCreate}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Добавить
+                </Button>
+              )}
+              <Button variant="outline" className={toolbarButton}>
+                <Filter className="mr-2 h-4 w-4" />
+                Список
+              </Button>
+              <Button variant="outline" className={toolbarButton}>
+                Шаблоны
+              </Button>
+              <Select value={filterStatus} onValueChange={(value) => { setFilterStatus(value); setPage(1); }}>
+                <SelectTrigger className="h-9 w-[165px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('assets.allStatuses')}</SelectItem>
+                  {ASSET_STATUSES.map((status) => (
+                    <SelectItem key={status} value={status}>{statusLabels[status][language]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {selectedIds.length > 0 && (
+                <Badge variant="outline" className="h-9 rounded-md px-3">
+                  Выбрано: {selectedIds.length}
+                </Badge>
+              )}
+              <Button variant="outline" size="icon" className={toolbarButton} onClick={() => queryClient.invalidateQueries({ queryKey: ['assets'] })}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" className={toolbarButton}>
+                    <FileDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={exportData}>
+                    <Download className="mr-2 h-4 w-4" />
+                    {t('assets.exportCsv')}
+                  </DropdownMenuItem>
+                  {canManage && selectedIds.length > 0 && (
+                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={bulkDelete}>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Удалить выбранные
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
-          <Select value={filterType} onValueChange={setFilterType}>
-            <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('assets.allTypes')}</SelectItem>
-              {ASSET_TYPES.map(tp => <SelectItem key={tp} value={tp}>{typeLabels[tp][language]}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('assets.allStatuses')}</SelectItem>
-              {ASSET_STATUSES.map(s => <SelectItem key={s} value={s}>{statusLabels[s][language]}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
 
-      {/* Table */}
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('common.name')}</TableHead>
-                <TableHead>{t('assets.type')}</TableHead>
-                <TableHead>{t('common.status')}</TableHead>
-                <TableHead>{t('assets.serialNumber')}</TableHead>
-                <TableHead>{t('assets.location')}</TableHead>
-                <TableHead>{t('assets.purchaseDate')}</TableHead>
-                {canManage && <TableHead />}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">{t('common.loading')}</TableCell></TableRow>
-              ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8">
-                  <Package className="h-12 w-12 mx-auto mb-2 text-muted-foreground/50" />
-                  <p className="text-muted-foreground">{t('assets.noAssets')}</p>
-                </TableCell></TableRow>
-              ) : filtered.map((asset: any) => {
-                const Icon = typeIcons[asset.asset_type as AssetType] || Server;
-                return (
-                  <TableRow key={asset.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <Icon className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <p className="text-foreground">{asset.name}</p>
-                          {asset.manufacturer && <p className="text-xs text-muted-foreground">{asset.manufacturer} {asset.model}</p>}
-                        </div>
-                      </div>
+          <div className="overflow-x-auto">
+            <Table className="min-w-[1280px]">
+              <TableHeader>
+                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableHead className="w-10">
+                    <Checkbox checked={selectedOnPage} onCheckedChange={togglePageSelected} aria-label="Выбрать страницу" />
+                  </TableHead>
+                  <TableHead className="w-[170px] uppercase text-[11px]">Наименование</TableHead>
+                  <TableHead className="w-[190px] uppercase text-[11px]">Организация</TableHead>
+                  <TableHead className="w-[120px] uppercase text-[11px]">Серийный номер</TableHead>
+                  <TableHead className="w-[130px] uppercase text-[11px]">Инвентарный номер</TableHead>
+                  <TableHead className="w-[150px] uppercase text-[11px]">Тип</TableHead>
+                  <TableHead className="w-[170px] uppercase text-[11px]">Сетевая структура - IP</TableHead>
+                  <TableHead className="w-[160px] uppercase text-[11px]">Модель</TableHead>
+                  <TableHead className="w-[150px] uppercase text-[11px]">Пользователь</TableHead>
+                  <TableHead className="w-[210px] uppercase text-[11px]">Комментарии</TableHead>
+                  <TableHead className="w-[160px] uppercase text-[11px]">Операционная система</TableHead>
+                  {canManage && <TableHead className="w-[90px]" />}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={12} className="h-36 text-center text-muted-foreground">{t('common.loading')}</TableCell>
+                  </TableRow>
+                ) : paginatedAssets.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={12} className="h-40 text-center">
+                      <Package className="mx-auto mb-2 h-10 w-10 text-muted-foreground/50" />
+                      <p className="text-muted-foreground">{t('assets.noAssets')}</p>
                     </TableCell>
-                    <TableCell><Badge variant="outline">{typeLabels[asset.asset_type as AssetType]?.[language]}</Badge></TableCell>
-                    <TableCell>
-                      <Badge className={statusColors[asset.status as AssetStatus]} variant="outline">
-                        {statusLabels[asset.status as AssetStatus]?.[language]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{asset.serial_number || '-'}</TableCell>
-                    <TableCell className="text-muted-foreground">{asset.location || '-'}</TableCell>
-                    <TableCell className="text-muted-foreground">{asset.purchase_date ? format(new Date(asset.purchase_date), 'dd.MM.yyyy') : '-'}</TableCell>
-                    {canManage && (
+                  </TableRow>
+                ) : paginatedAssets.map((asset, index) => {
+                  const Icon = typeIcons[asset.asset_type] || Server;
+                  return (
+                    <TableRow key={asset.id} className={index % 2 === 0 ? 'bg-background' : 'bg-muted/35'}>
                       <TableCell>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(asset)}><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(asset.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        <Checkbox checked={selectedIds.includes(asset.id)} onCheckedChange={() => toggleSelected(asset.id)} aria-label={asset.name} />
+                      </TableCell>
+                      <TableCell className="align-top font-medium text-primary">
+                        <button type="button" onClick={() => openEdit(asset)} className="text-left hover:underline">
+                          {asset.name || '-'}
+                        </button>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <span className="inline-flex rounded-md bg-muted px-2 py-1 text-xs text-primary">
+                          Qazaq Generation / ID Support
+                        </span>
+                      </TableCell>
+                      <TableCell className="align-top text-muted-foreground">{asset.serial_number || '-'}</TableCell>
+                      <TableCell className="align-top text-muted-foreground">{asset.inventory_number || '-'}</TableCell>
+                      <TableCell className="align-top">
+                        <div className="flex items-start gap-2">
+                          <Icon className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                          <span>{typeLabels[asset.asset_type]?.[language] || asset.asset_type}</span>
                         </div>
                       </TableCell>
-                    )}
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                      <TableCell className="whitespace-pre-line align-top text-muted-foreground">{getAssetIp(asset)}</TableCell>
+                      <TableCell className="align-top">
+                        {[asset.manufacturer, asset.model].filter(Boolean).join(' ') || '-'}
+                      </TableCell>
+                      <TableCell className="align-top text-primary">{asset.assigned_to_name || '-'}</TableCell>
+                      <TableCell className="align-top text-muted-foreground">{asset.notes || asset.location || '-'}</TableCell>
+                      <TableCell className="align-top">
+                        <Badge className={statusColors[asset.status]} variant="outline">
+                          {asset.asset_type === 'hardware' ? 'Linux / Windows' : statusLabels[asset.status][language]}
+                        </Badge>
+                      </TableCell>
+                      {canManage && (
+                        <TableCell className="align-top">
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => openEdit(asset)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(asset.id)}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
 
-      {/* Create/Edit Dialog */}
+          <div className="flex flex-col gap-3 border-t p-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Select value={String(pageSize)} onValueChange={(value) => { setPageSize(Number(value)); setPage(1); }}>
+                <SelectTrigger className="h-9 w-[92px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {pageSizeOptions.map((size) => <SelectItem key={size} value={String(size)}>{size}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <span>строк на странице</span>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Отображаются строки с {visibleAssets.length === 0 ? 0 : (safePage - 1) * pageSize + 1} по {Math.min(safePage * pageSize, visibleAssets.length)} из {visibleAssets.length}
+            </div>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" disabled={safePage === 1} onClick={() => setPage(1)}><ChevronsLeft className="h-4 w-4" /></Button>
+              <Button variant="ghost" size="icon" disabled={safePage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}><ChevronLeft className="h-4 w-4" /></Button>
+              <Button className="h-9 w-9">{safePage}</Button>
+              <Button variant="ghost" size="icon" disabled={safePage === totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}><ChevronRight className="h-4 w-4" /></Button>
+              <Button variant="ghost" size="icon" disabled={safePage === totalPages} onClick={() => setPage(totalPages)}><ChevronsRight className="h-4 w-4" /></Button>
+            </div>
+          </div>
+        </section>
+      </div>
+
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? t('assets.editAsset') : t('assets.newAsset')}</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
               <Label>{t('common.name')} *</Label>
-              <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+              <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
             </div>
             <div>
               <Label>{t('assets.type')}</Label>
-              <Select value={form.asset_type} onValueChange={v => setForm({ ...form, asset_type: v as AssetType })}>
+              <Select value={form.asset_type} onValueChange={(value) => setForm({ ...form, asset_type: value as AssetType })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {ASSET_TYPES.map(tp => <SelectItem key={tp} value={tp}>{typeLabels[tp][language]}</SelectItem>)}
+                  {ASSET_TYPES.map((type) => <SelectItem key={type} value={type}>{typeLabels[type][language]}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div>
               <Label>{t('common.status')}</Label>
-              <Select value={form.status} onValueChange={v => setForm({ ...form, status: v as AssetStatus })}>
+              <Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value as AssetStatus })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {ASSET_STATUSES.map(s => <SelectItem key={s} value={s}>{statusLabels[s][language]}</SelectItem>)}
+                  {ASSET_STATUSES.map((status) => <SelectItem key={status} value={status}>{statusLabels[status][language]}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div>
               <Label>{t('assets.serialNumber')}</Label>
-              <Input value={form.serial_number} onChange={e => setForm({ ...form, serial_number: e.target.value })} />
+              <Input value={form.serial_number} onChange={(event) => setForm({ ...form, serial_number: event.target.value })} />
             </div>
             <div>
               <Label>{t('assets.inventoryNumber')}</Label>
-              <Input value={form.inventory_number} onChange={e => setForm({ ...form, inventory_number: e.target.value })} />
+              <Input value={form.inventory_number} onChange={(event) => setForm({ ...form, inventory_number: event.target.value })} />
             </div>
             <div>
               <Label>{t('assets.manufacturer')}</Label>
-              <Input value={form.manufacturer} onChange={e => setForm({ ...form, manufacturer: e.target.value })} />
+              <Input value={form.manufacturer} onChange={(event) => setForm({ ...form, manufacturer: event.target.value })} />
             </div>
             <div>
               <Label>{t('assets.model')}</Label>
-              <Input value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} />
+              <Input value={form.model} onChange={(event) => setForm({ ...form, model: event.target.value })} />
             </div>
             <div>
               <Label>{t('assets.location')}</Label>
-              <Input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} />
+              <Input value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} />
             </div>
             <div>
               <Label>{t('profile.department')}</Label>
-              <Select value={form.department_id} onValueChange={v => setForm({ ...form, department_id: v })}>
+              <Select value={form.department_id} onValueChange={(value) => setForm({ ...form, department_id: value })}>
                 <SelectTrigger><SelectValue placeholder="-" /></SelectTrigger>
                 <SelectContent>
-                  {departments.map((d: any) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                  {departments.map((department: any) => <SelectItem key={department.id} value={department.id}>{department.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div>
               <Label>{t('assets.purchaseDate')}</Label>
-              <Input type="date" value={form.purchase_date} onChange={e => setForm({ ...form, purchase_date: e.target.value })} />
+              <Input type="date" value={form.purchase_date} onChange={(event) => setForm({ ...form, purchase_date: event.target.value })} />
             </div>
             <div>
               <Label>{t('assets.warranty')}</Label>
-              <Input type="date" value={form.warranty_expiry} onChange={e => setForm({ ...form, warranty_expiry: e.target.value })} />
+              <Input type="date" value={form.warranty_expiry} onChange={(event) => setForm({ ...form, warranty_expiry: event.target.value })} />
             </div>
             <div>
               <Label>{t('assets.cost')}</Label>
-              <Input type="number" value={form.purchase_cost} onChange={e => setForm({ ...form, purchase_cost: e.target.value })} />
+              <Input type="number" value={form.purchase_cost} onChange={(event) => setForm({ ...form, purchase_cost: event.target.value })} />
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Label>{t('assets.notes')}</Label>
-              <Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} />
+              <Textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} rows={3} />
             </div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          <div className="mt-4 flex justify-end gap-2">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
             <Button onClick={() => saveMutation.mutate(form)} disabled={!form.name || saveMutation.isPending}>
               {saveMutation.isPending ? '...' : editingId ? t('common.save') : t('common.create')}

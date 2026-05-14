@@ -297,7 +297,13 @@ export const chatMessages = pgTable('chat_messages', {
   id: uuid('id').primaryKey().defaultRandom(),
   roomId: uuid('room_id').notNull().references(() => chatRooms.id, { onDelete: 'cascade' }),
   senderId: uuid('sender_id').notNull().references(() => users.id),
+  messageType: text('message_type').default('text').notNull(), // 'text' | 'file' | 'audio'
   body: text('body').notNull(),
+  fileName: text('file_name'),
+  filePath: text('file_path'),
+  fileMimeType: text('file_mime_type'),
+  fileSize: integer('file_size'),
+  durationMs: integer('duration_ms'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

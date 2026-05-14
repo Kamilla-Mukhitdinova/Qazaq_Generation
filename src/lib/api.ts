@@ -41,7 +41,7 @@ class ApiClient {
       throw new Error('Unauthorized');
     }
 
-    const data = await res.json();
+    const data = res.status === 204 ? null : await res.json();
 
     if (!res.ok) {
       throw new Error(data.error || `Request failed: ${res.status}`);
@@ -80,6 +80,20 @@ class ApiClient {
     }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password, name }),
+    });
+  }
+
+  async forgotPassword(email: string) {
+    return this.request<{ success: boolean }>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async resetPassword(token: string, password: string) {
+    return this.request<{ success: boolean }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
     });
   }
 
@@ -290,7 +304,50 @@ class ApiClient {
   async sendChatMessage(roomId: string, body: string) {
     return this.request(`/chat/rooms/${roomId}/messages`, { method: 'POST', body: JSON.stringify({ body }) });
   }
+  async uploadChatMessage(roomId: string, file: File | Blob, options: { messageType?: 'file' | 'audio'; body?: string; durationMs?: number; fileName?: string } = {}) {
+    const formData = new FormData();
+    formData.append('file', file, options.fileName || (file instanceof File ? file.name : 'voice-message.webm'));
+    if (options.messageType) formData.append('messageType', options.messageType);
+    if (options.body) formData.append('body', options.body);
+    if (options.durationMs !== undefined) formData.append('durationMs', String(options.durationMs));
+
+    const headers: Record<string, string> = {};
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+
+    const res = await fetch(`${API_BASE}/chat/rooms/${roomId}/messages/upload`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+    return data;
+  }
+  getChatMessageFileUrl(messageId: string) {
+    const token = this.token ? `?token=${encodeURIComponent(this.token)}` : '';
+    return `${API_BASE}/chat/messages/${messageId}/file${token}`;
+  }
   async deleteChatRoom(roomId: string) { return this.request(`/chat/rooms/${roomId}`, { method: 'DELETE' }); }
+
+  // --- Meetings ---
+  async getMeetings() { return this.request<any[]>('/meetings'); }
+  async getMeeting(id: string) { return this.request<any>(`/meetings/${id}`); }
+  async createMeeting(data: any) {
+    return this.request('/meetings', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async startMeeting(id: string) {
+    return this.request(`/meetings/${id}/start`, { method: 'PATCH' });
+  }
+  async endMeeting(id: string) {
+    return this.request(`/meetings/${id}/end`, { method: 'PATCH' });
+  }
+  async cancelMeeting(id: string) {
+    return this.request(`/meetings/${id}/cancel`, { method: 'PATCH' });
+  }
+  async deleteMeeting(id: string) {
+    return this.request(`/meetings/${id}`, { method: 'DELETE' });
+  }
 
   // --- Assets ---
   async getAssets(params?: Record<string, string>) {
