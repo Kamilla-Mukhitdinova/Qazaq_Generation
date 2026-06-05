@@ -134,6 +134,14 @@ class ApiClient {
     return this.request(`/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
   }
 
+  async deleteTicket(id: string) {
+    return this.request(`/tickets/${id}`, { method: 'DELETE' });
+  }
+
+  async deleteTickets(ids: string[]) {
+    return this.request('/tickets', { method: 'DELETE', body: JSON.stringify({ ids }) });
+  }
+
   async addComment(ticketId: string, body: string, isInternal = false) {
     return this.request(`/tickets/${ticketId}/comments`, {
       method: 'POST',
@@ -176,6 +184,33 @@ class ApiClient {
 
   async deleteAttachment(ticketId: string, attachmentId: string) {
     return this.request(`/tickets/${ticketId}/attachments/${attachmentId}`, { method: 'DELETE' });
+  }
+
+  // --- AI Agent ---
+  async runAIAgent(message: string, options: { ticketId?: string; language?: string } = {}) {
+    return this.request('/ai-chat/agent', {
+      method: 'POST',
+      body: JSON.stringify({ message, ...options }),
+    });
+  }
+
+  async analyzeTicketWithAI(ticketId: string) {
+    return this.request<{ analysis: string }>(`/ai-chat/tickets/${ticketId}/analyze`, { method: 'POST' });
+  }
+
+  async downloadAIReportFile(periodMonth: string) {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    const res = await fetch(`${API_BASE}/ai-chat/reports/file`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ periodMonth }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'AI report failed');
+    }
+    return res.blob();
   }
 
   // --- Dashboard ---
@@ -231,6 +266,25 @@ class ApiClient {
   async getPPRPlans() { return this.request<any[]>('/ppr-plans'); }
   async createPPRPlan(data: any) { return this.request('/ppr-plans', { method: 'POST', body: JSON.stringify(data) }); }
   async updatePPRPlan(id: string, data: any) { return this.request(`/ppr-plans/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }
+  async decidePPRPlan(id: string, decision: 'Approved' | 'Rejected') {
+    return this.request(`/ppr-plans/${id}/decision`, { method: 'POST', body: JSON.stringify({ decision }) });
+  }
+  async uploadPPRAttachment(id: string, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/ppr-plans/${id}/attachment`, {
+      method: 'POST',
+      headers: this.token ? { Authorization: `Bearer ${this.token}` } : undefined,
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'PPR attachment upload failed');
+    return data;
+  }
+  getPPRAttachmentDownloadUrl(id: string) {
+    const token = localStorage.getItem('auth_token');
+    return `${API_BASE}/ppr-plans/${id}/attachment/download${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  }
   async deletePPRPlan(id: string) { return this.request(`/ppr-plans/${id}`, { method: 'DELETE' }); }
 
   async getReports() { return this.request<any[]>('/reports'); }
@@ -238,6 +292,10 @@ class ApiClient {
   async updateReport(id: string, data: any) { return this.request(`/reports/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }
 
   async getPerformanceScores() { return this.request<any[]>('/performance-scores'); }
+  async getPerformanceKpi(periodMonth?: string) {
+    const qs = periodMonth ? `?${new URLSearchParams({ periodMonth }).toString()}` : '';
+    return this.request<{ periodMonth: string; rows: any[] }>(`/performance-kpi${qs}`);
+  }
 
   async getTicketHistory(ticketId?: string) {
     const path = ticketId ? `/ticket-history?ticketId=${ticketId}` : '/ticket-history';
@@ -344,6 +402,27 @@ class ApiClient {
   }
   async cancelMeeting(id: string) {
     return this.request(`/meetings/${id}/cancel`, { method: 'PATCH' });
+  }
+  async uploadMeetingRecording(id: string, file: Blob, fileName = 'meeting-recording.webm') {
+    const formData = new FormData();
+    formData.append('file', file, fileName);
+
+    const headers: Record<string, string> = {};
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+
+    const res = await fetch(`${API_BASE}/meetings/${id}/recording`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Recording upload failed');
+    return data;
+  }
+  getMeetingRecordingUrl(id: string) {
+    const token = this.token ? `?token=${encodeURIComponent(this.token)}` : '';
+    return `${API_BASE}/meetings/${id}/recording${token}`;
   }
   async deleteMeeting(id: string) {
     return this.request(`/meetings/${id}`, { method: 'DELETE' });

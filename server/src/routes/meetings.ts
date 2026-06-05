@@ -1,6 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { randomUUID } from 'crypto';
+import fs from 'fs';
+import multer from 'multer';
+import path from 'path';
+import { db } from '../db/index.js';
+import { profiles } from '../db/schema.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { notifyUsers } from '../services/notificationService.js';
 
 type MeetingStatus = 'scheduled' | 'live' | 'ended' | 'cancelled';
 
@@ -17,12 +23,32 @@ interface Meeting {
   reminderMinutes: number | null;
   startedAt: string | null;
   endedAt: string | null;
+  recording: MeetingRecording | null;
+}
+
+interface MeetingRecording {
+  fileName: string;
+  filePath: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
 }
 
 const router = Router();
 router.use(authMiddleware);
 
 const meetingStore = new Map<string, Meeting>();
+const meetingUploadsDir = path.resolve('uploads/meetings');
+fs.mkdirSync(meetingUploadsDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, meetingUploadsDir),
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${unique}-${file.originalname}`);
+  },
+});
+const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024 } });
 
 function getFrontendOrigin(req: Request) {
   return process.env.FRONTEND_URL?.split(',')[0]?.trim() || `${req.protocol}://${req.get('host')}`;
@@ -32,62 +58,53 @@ function buildInviteLink(req: Request, id: string) {
   return `${getFrontendOrigin(req)}/meet/${id}`;
 }
 
-function seedMeetings(req: Request, userId: string) {
-  if (meetingStore.size > 0) return;
+function normalizeParticipant(value: string) {
+  return value.trim().toLowerCase();
+}
 
-  const now = new Date();
-  const today10 = new Date(now);
-  today10.setHours(10, 0, 0, 0);
-  const today15 = new Date(now);
-  today15.setHours(15, 30, 0, 0);
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  yesterday.setHours(16, 0, 0, 0);
+function formatMeetingTime(value: string) {
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Almaty',
+  }).format(new Date(value));
+}
 
-  const seeds: Omit<Meeting, 'inviteLink'>[] = [
-    {
-      id: 'daily-it-status',
-      title: 'Ежедневный статус IT',
-      description: 'Короткая синхронизация по заявкам, SLA и блокерам.',
-      scheduledAt: today10.toISOString(),
-      durationMinutes: 30,
-      status: 'scheduled',
-      createdBy: userId,
-      participants: ['Аружан Сейдахмет', 'Данияр Омаров', 'Айгерим Нурлан'],
-      reminderMinutes: 10,
-      startedAt: null,
-      endedAt: null,
-    },
-    {
-      id: 'incident-review',
-      title: 'Разбор инцидентов',
-      description: 'Проверка причин крупных инцидентов и договоренности по действиям.',
-      scheduledAt: today15.toISOString(),
-      durationMinutes: 45,
-      status: 'live',
-      createdBy: userId,
-      participants: ['Служба поддержки', 'Инфраструктура', 'Безопасность'],
-      reminderMinutes: 15,
-      startedAt: new Date(now.getTime() - 12 * 60 * 1000).toISOString(),
-      endedAt: null,
-    },
-    {
-      id: 'change-board',
-      title: 'Change Advisory Board',
-      description: 'Обсуждение изменений на неделю.',
-      scheduledAt: yesterday.toISOString(),
-      durationMinutes: 60,
-      status: 'ended',
-      createdBy: userId,
-      participants: ['Менеджеры', 'Агенты', 'Администраторы'],
-      reminderMinutes: 30,
-      startedAt: yesterday.toISOString(),
-      endedAt: new Date(yesterday.getTime() + 54 * 60 * 1000).toISOString(),
-    },
-  ];
+async function notifyMeetingParticipants(meeting: Meeting) {
+  const participantKeys = [...new Set(meeting.participants.map(normalizeParticipant).filter(Boolean))];
+  if (participantKeys.length === 0) return;
 
-  for (const meeting of seeds) {
-    meetingStore.set(meeting.id, { ...meeting, inviteLink: buildInviteLink(req, meeting.id) });
+  try {
+    const rows = (await db.select().from(profiles)).filter((profile) => {
+      const name = normalizeParticipant(profile.name);
+      const email = normalizeParticipant(profile.email);
+      return participantKeys.includes(name) || participantKeys.includes(email);
+    });
+    const targetIds = rows
+      .map((profile) => profile.userId)
+      .filter((userId): userId is string => Boolean(userId && userId !== meeting.createdBy));
+
+    if (targetIds.length === 0) return;
+
+    const meetingTime = formatMeetingTime(meeting.scheduledAt);
+    const message = `Вы добавлены в конференцию «${meeting.title}» на ${meetingTime}. Ссылка для подключения: ${meeting.inviteLink}`;
+
+    await notifyUsers(targetIds, {
+      type: 'meeting_invite',
+      title: 'Вы добавлены в конференцию',
+      message,
+      payload: {
+        meetingId: meeting.id,
+        meetingTitle: meeting.title,
+        scheduledAt: meeting.scheduledAt,
+        meetingLink: meeting.inviteLink,
+      },
+    });
+  } catch (err) {
+    console.error('Meeting participant notification error:', err);
   }
 }
 
@@ -101,7 +118,6 @@ function getMeetingOr404(id: string, res: Response) {
 }
 
 router.get('/', (req: Request, res: Response) => {
-  seedMeetings(req, req.user!.userId);
   const meetings = Array.from(meetingStore.values()).sort(
     (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
   );
@@ -109,13 +125,12 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 router.get('/:id', (req: Request, res: Response) => {
-  seedMeetings(req, req.user!.userId);
   const meeting = getMeetingOr404(String(req.params.id), res);
   if (!meeting) return;
   res.json(meeting);
 });
 
-router.post('/', (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   const {
     title,
     description = '',
@@ -147,9 +162,11 @@ router.post('/', (req: Request, res: Response) => {
     reminderMinutes: reminderMinutes === null || reminderMinutes === '' ? null : Math.max(0, Number(reminderMinutes) || 0),
     startedAt: null,
     endedAt: null,
+    recording: null,
   };
 
   meetingStore.set(id, meeting);
+  await notifyMeetingParticipants(meeting);
   res.status(201).json(meeting);
 });
 
@@ -185,10 +202,51 @@ router.patch('/:id/cancel', (req: Request, res: Response) => {
   res.json(meeting);
 });
 
+router.post('/:id/recording', upload.single('file'), (req: Request, res: Response) => {
+  const meeting = getMeetingOr404(String(req.params.id), res);
+  if (!meeting) return;
+  if (!req.file) return res.status(400).json({ error: 'Recording file is required' });
+
+  if (meeting.createdBy !== req.user!.userId) {
+    fs.unlink(req.file.path, () => {});
+    return res.status(403).json({ error: 'Only meeting organizer can save recording' });
+  }
+
+  if (meeting.recording?.filePath) {
+    fs.unlink(path.join(meetingUploadsDir, meeting.recording.filePath), () => {});
+  }
+
+  meeting.recording = {
+    fileName: req.file.originalname || 'meeting-recording.webm',
+    filePath: req.file.filename,
+    mimeType: req.file.mimetype || 'video/webm',
+    size: req.file.size,
+    createdAt: new Date().toISOString(),
+  };
+
+  res.status(201).json(meeting.recording);
+});
+
+router.get('/:id/recording', (req: Request, res: Response) => {
+  const meeting = getMeetingOr404(String(req.params.id), res);
+  if (!meeting) return;
+  if (!meeting.recording?.filePath) return res.status(404).json({ error: 'Recording not found' });
+
+  const filePath = path.join(meetingUploadsDir, meeting.recording.filePath);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Recording file not found' });
+
+  res.setHeader('Content-Type', meeting.recording.mimeType || 'video/webm');
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(meeting.recording.fileName)}"`);
+  return res.sendFile(filePath);
+});
+
 router.delete('/:id', (req: Request, res: Response) => {
   const meeting = getMeetingOr404(String(req.params.id), res);
   if (!meeting) return;
 
+  if (meeting.recording?.filePath) {
+    fs.unlink(path.join(meetingUploadsDir, meeting.recording.filePath), () => {});
+  }
   meetingStore.delete(meeting.id);
   res.status(204).send();
 });

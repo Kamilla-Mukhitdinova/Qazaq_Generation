@@ -1,273 +1,467 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { useLanguage } from '@/contexts/LanguageContext';
 import { api } from '@/lib/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, ClipboardCheck, PenTool, CheckCircle2, Clock, AlertTriangle, FileText, Download } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ClipboardCheck, Download, FileText, GitBranch, Loader2, Paperclip, Send, ShieldCheck, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
-import jsPDF from 'jspdf';
+
+type PprLine = '2' | '3';
+type SignerStatus = 'Pending' | 'Approved' | 'Rejected';
+
+interface PprSigner {
+  userId: string;
+  status: SignerStatus;
+  decidedAt?: string | null;
+}
 
 interface PPRPlan {
-  id: string; title: string; description: string | null; equipment: string;
-  location: string | null; scheduled_date: string; frequency: string; status: string;
-  created_by: string; assigned_to: string | null; checklist: any[]; notes: string | null;
-  signed_by_executor: string | null; executor_signature_date: string | null;
-  signed_by_manager: string | null; manager_signature_date: string | null; created_at: string;
+  id: string;
+  title: string;
+  description: string | null;
+  line: PprLine;
+  scheduled_date: string;
+  status: string;
+  created_by: string;
+  assigned_to: string | null;
+  notes: string | null;
+  signers: PprSigner[];
+  attachment?: {
+    fileName: string;
+    size?: number;
+    uploadedAt?: string;
+  } | null;
+  created_at: string;
 }
 
 const pick = <T,>(obj: any, ...keys: string[]): T | undefined => {
-  for (const k of keys) {
-    if (obj && obj[k] !== undefined && obj[k] !== null) return obj[k] as T;
+  for (const key of keys) {
+    if (obj?.[key] !== undefined && obj?.[key] !== null) return obj[key] as T;
   }
   return undefined;
 };
 
-const normalizePlan = (p: any): PPRPlan => ({
-  id: p.id,
-  title: p.title,
-  description: p.description ?? null,
-  equipment: p.equipment,
-  location: p.location ?? null,
-  scheduled_date: pick<string>(p, 'scheduled_date', 'scheduledDate') || new Date().toISOString(),
-  frequency: p.frequency || 'monthly',
-  status: p.status || 'draft',
-  created_by: pick<string>(p, 'created_by', 'createdBy') || '',
-  assigned_to: pick<string | null>(p, 'assigned_to', 'assignedTo') || null,
-  checklist: Array.isArray(p.checklist) ? p.checklist : [],
-  notes: p.notes ?? null,
-  signed_by_executor: pick<string | null>(p, 'signed_by_executor', 'signedByExecutor') || null,
-  executor_signature_date: pick<string | null>(p, 'executor_signature_date', 'executorSignatureDate') || null,
-  signed_by_manager: pick<string | null>(p, 'signed_by_manager', 'signedByManager') || null,
-  manager_signature_date: pick<string | null>(p, 'manager_signature_date', 'managerSignatureDate') || null,
-  created_at: pick<string>(p, 'created_at', 'createdAt') || new Date().toISOString(),
+const normalizeProfileId = (profile: any) => pick<string>(profile, 'user_id', 'userId') || '';
+
+const normalizePlan = (plan: any): PPRPlan => ({
+  id: plan.id,
+  title: plan.title,
+  description: plan.description ?? null,
+  line: String(plan.line || '2') === '3' ? '3' : '2',
+  scheduled_date: pick<string>(plan, 'scheduled_date', 'scheduledDate') || new Date().toISOString(),
+  status: plan.status || 'draft',
+  created_by: pick<string>(plan, 'created_by', 'createdBy') || '',
+  assigned_to: pick<string | null>(plan, 'assigned_to', 'assignedTo') || null,
+  notes: plan.notes ?? null,
+  signers: Array.isArray(plan.signers) ? plan.signers : [],
+  attachment: plan.attachment || null,
+  created_at: pick<string>(plan, 'created_at', 'createdAt') || new Date().toISOString(),
 });
 
-export default function PPRPlans() {
-  const { user, profile, role } = useAuth();
-  const { t } = useLanguage();
-  const queryClient = useQueryClient();
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<PPRPlan | null>(null);
-  const [form, setForm] = useState({ title: '', description: '', equipment: '', location: '', scheduled_date: '', frequency: 'monthly', checklist: [''] });
+const statusConfig: Record<string, { label: string; color: string; icon: typeof FileText }> = {
+  draft: { label: 'Draft', color: 'bg-muted text-muted-foreground', icon: FileText },
+  pending_approval: { label: 'Pending approval', color: 'bg-amber-500/10 text-amber-700', icon: ShieldCheck },
+  approved: { label: 'Approved', color: 'bg-green-500/10 text-green-600', icon: CheckCircle2 },
+  rejected: { label: 'Rejected', color: 'bg-red-500/10 text-red-600', icon: XCircle },
+};
 
-  const { data: plans = [], isLoading } = useQuery({
+const signerStatusClass: Record<SignerStatus, string> = {
+  Pending: 'bg-muted text-muted-foreground',
+  Approved: 'bg-green-500/10 text-green-600',
+  Rejected: 'bg-red-500/10 text-red-600',
+};
+
+const initialForm = (line: PprLine) => ({
+  title: '',
+  description: '',
+  line,
+  scheduledDate: new Date().toISOString().slice(0, 10),
+  assignedTo: '',
+  notes: '',
+  signerIds: [] as string[],
+});
+
+const NO_EXECUTOR_VALUE = 'none';
+
+export default function PPRPlans() {
+  const { user, profile } = useAuth();
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedLine, setSelectedLine] = useState<PprLine | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<PPRPlan | null>(null);
+  const [form, setForm] = useState(initialForm('2'));
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+
+  const { data: rawPlans = [], isLoading } = useQuery({
     queryKey: ['ppr-plans'],
     queryFn: () => api.getPPRPlans(),
   });
-  const normalizedPlans = (plans as any[]).map(normalizePlan);
 
-  const { data: profiles = [] } = useQuery({
+  const { data: profiles = [], isLoading: profilesLoading } = useQuery({
     queryKey: ['all-profiles'],
     queryFn: () => api.getProfiles(),
   });
 
+  const plans = useMemo(() => (rawPlans as any[]).map(normalizePlan), [rawPlans]);
+  const people = useMemo(() => {
+    const normalizedPeople = (profiles as any[])
+      .map(profile => ({
+        id: normalizeProfileId(profile),
+        name: profile.name || profile.email || 'User',
+        email: profile.email || '',
+      }))
+      .filter(profile => profile.id);
+
+    if (normalizedPeople.length > 0 || !user?.id) return normalizedPeople;
+
+    return [{
+      id: user.id,
+      name: profile?.name || user.name || user.email || 'Current user',
+      email: profile?.email || user.email || '',
+    }];
+  }, [profile, profiles, user]);
+
+  useEffect(() => {
+    const pprId = searchParams.get('pprId');
+    if (!pprId || plans.length === 0) return;
+
+    const plan = plans.find(item => item.id === pprId);
+    if (plan) {
+      setSelectedPlan(plan);
+      setSelectedLine(null);
+    }
+  }, [plans, searchParams]);
+
   const getProfileName = (userId: string | null) => {
     if (!userId) return '-';
-    return (profiles as any[]).find((p: any) => p.user_id === userId)?.name || userId.slice(0, 8);
+    return people.find(person => person.id === userId)?.name || userId.slice(0, 8);
   };
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const checklist = form.checklist.filter(c => c.trim()).map(c => ({ text: c, done: false }));
-      await api.createPPRPlan({
-        title: form.title, description: form.description || null,
-        equipment: form.equipment, location: form.location || null,
-        scheduledDate: form.scheduled_date, frequency: form.frequency, checklist,
+      const created: any = await api.createPPRPlan({
+        title: form.title,
+        description: form.description || null,
+        line: form.line,
+        scheduledDate: form.scheduledDate,
+        assignedTo: form.assignedTo || null,
+        notes: form.notes || null,
+        signerIds: form.signerIds,
       });
+      if (attachmentFile) await api.uploadPPRAttachment(created.id, attachmentFile);
+      return created;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ppr-plans'] });
-      setIsCreateOpen(false);
-      setForm({ title: '', description: '', equipment: '', location: '', scheduled_date: '', frequency: 'monthly', checklist: [''] });
-      toast({ title: t('ppr.planCreated') });
+      setSelectedLine(null);
+      setForm(initialForm('2'));
+      setAttachmentFile(null);
+      toast({ title: 'ППР сохранён', description: 'Подписантам отправлены уведомления.' });
     },
-    onError: (e: any) => toast({ title: t('common.error'), description: e.message, variant: 'destructive' }),
+    onError: (error: any) => toast({ title: 'Ошибка', description: error.message, variant: 'destructive' }),
   });
 
-  const signMutation = useMutation({
-    mutationFn: async ({ planId, type }: { planId: string; type: 'executor' | 'manager' }) => {
-      const updates = type === 'executor'
-        ? { signedByExecutor: user!.id, executorSignatureDate: new Date().toISOString(), status: 'signed_executor' }
-        : { signedByManager: user!.id, managerSignatureDate: new Date().toISOString(), status: 'approved' };
-      await api.updatePPRPlan(planId, updates);
-    },
-    onSuccess: () => {
+  const decisionMutation = useMutation({
+    mutationFn: ({ planId, decision }: { planId: string; decision: 'Approved' | 'Rejected' }) => api.decidePPRPlan(planId, decision),
+    onSuccess: (updated: any) => {
       queryClient.invalidateQueries({ queryKey: ['ppr-plans'] });
-      setSelectedPlan(null);
-      toast({ title: t('ppr.signedSuccess') });
+      setSelectedPlan(normalizePlan(updated));
+      toast({ title: 'Решение сохранено' });
     },
-    onError: (e: any) => toast({ title: t('common.error'), description: e.message, variant: 'destructive' }),
+    onError: (error: any) => toast({ title: 'Ошибка', description: error.message, variant: 'destructive' }),
   });
 
-  const statusConfig: Record<string, { labelKey: string; color: string; icon: any }> = {
-    draft: { labelKey: 'ppr.draft', color: 'bg-muted text-muted-foreground', icon: FileText },
-    in_progress: { labelKey: 'ppr.inProgress', color: 'bg-blue-500/20 text-blue-400', icon: Clock },
-    signed_executor: { labelKey: 'ppr.signedExecutor', color: 'bg-yellow-500/20 text-yellow-400', icon: PenTool },
-    approved: { labelKey: 'ppr.approved', color: 'bg-green-500/20 text-green-400', icon: CheckCircle2 },
-    overdue: { labelKey: 'ppr.overdue', color: 'bg-red-500/20 text-red-400', icon: AlertTriangle },
+  const chooseLine = (line: PprLine) => {
+    setSelectedLine(line);
+    setForm(initialForm(line));
   };
 
-  const canSignAsExecutor = (plan: PPRPlan) => !plan.signed_by_executor && (plan.assigned_to === user?.id || plan.created_by === user?.id || role === 'agent');
-  const canSignAsManager = (plan: PPRPlan) => plan.signed_by_executor && !plan.signed_by_manager && (role === 'manager' || role === 'admin');
-
-  const exportToPDF = (plan: PPRPlan) => {
-    const doc = new jsPDF();
-    const sc = statusConfig[plan.status] || statusConfig.draft;
-    let y = 20;
-    doc.setFontSize(18); doc.text(t('nav.ppr'), 105, y, { align: 'center' }); y += 12;
-    doc.setFontSize(14); doc.text(plan.title, 105, y, { align: 'center' }); y += 15;
-    doc.setFontSize(10);
-    const fields = [[t('ppr.equipment'), plan.equipment], [t('ppr.location'), plan.location || '-'], [t('ppr.scheduledDate'), format(new Date(plan.scheduled_date), 'dd.MM.yyyy')], [t('ppr.frequency'), plan.frequency || '-'], [t('common.status'), t(sc.labelKey)], [t('ppr.createdBy'), getProfileName(plan.created_by)]];
-    fields.forEach(([label, value]) => { doc.setFont('helvetica', 'bold'); doc.text(`${label}:`, 20, y); doc.setFont('helvetica', 'normal'); doc.text(String(value), 70, y); y += 7; });
-    doc.save(`PPR_${plan.title.replace(/\s+/g, '_')}.pdf`);
+  const toggleSigner = (userId: string, checked: boolean) => {
+    setForm(current => ({
+      ...current,
+      signerIds: checked
+        ? [...current.signerIds, userId]
+        : current.signerIds.filter(id => id !== userId),
+    }));
   };
+
+  const submitCreate = () => {
+    if (!form.title.trim()) {
+      toast({ title: 'Заполните название ППР', variant: 'destructive' });
+      return;
+    }
+    if (!form.scheduledDate) {
+      toast({ title: 'Выберите дату ППР', variant: 'destructive' });
+      return;
+    }
+    if (form.signerIds.length === 0) {
+      toast({ title: 'Выберите хотя бы одного подписанта', variant: 'destructive' });
+      return;
+    }
+
+    createMutation.mutate();
+  };
+
+  const currentUserSigner = selectedPlan?.signers.find(signer => signer.userId === user?.id);
+  const canDecide = Boolean(currentUserSigner && currentUserSigner.status === 'Pending' && selectedPlan?.status === 'pending_approval');
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><ClipboardCheck className="h-6 w-6 text-primary" />{t('ppr.title')}</h1>
-          <p className="text-muted-foreground">{t('ppr.subtitle')}</p>
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <ClipboardCheck className="h-6 w-6 text-primary" />
+            ППР
+          </h1>
+          <p className="text-muted-foreground">Создание, согласование и контроль документов ППР.</p>
         </div>
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" />{t('ppr.createPpr')}</Button></DialogTrigger>
-          <DialogContent className="max-w-lg">
-            <DialogHeader><DialogTitle>{t('ppr.newPlan')}</DialogTitle></DialogHeader>
-            <div className="space-y-4">
-              <div><Label>{t('ppr.planName')}</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder={t('ppr.namePlaceholder')} /></div>
-              <div><Label>{t('ppr.equipment')}</Label><Input value={form.equipment} onChange={e => setForm(f => ({ ...f, equipment: e.target.value }))} placeholder={t('ppr.equipmentPlaceholder')} /></div>
-              <div><Label>{t('ppr.location')}</Label><Input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder={t('ppr.locationPlaceholder')} /></div>
-              <div><Label>{t('ppr.scheduledDate')}</Label><Input type="date" value={form.scheduled_date} onChange={e => setForm(f => ({ ...f, scheduled_date: e.target.value }))} /></div>
+      </div>
+
+      {!selectedLine ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          {(['2', '3'] as PprLine[]).map(line => (
+            <button key={line} type="button" onClick={() => chooseLine(line)} className="group text-left">
+              <Card className="h-full transition hover:border-primary/60 hover:shadow-lg">
+                <CardContent className="flex min-h-44 items-center gap-5 p-6">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <GitBranch className="h-7 w-7" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold">Линия {line}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Открыть шаблон ППР для линии {line}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" onClick={() => setSelectedLine(null)}>
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
               <div>
-                <Label>{t('ppr.frequency')}</Label>
-                <Select value={form.frequency} onValueChange={v => setForm(f => ({ ...f, frequency: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <CardTitle>Шаблон ППР: Линия {form.line}</CardTitle>
+                <CardDescription>Заполните данные и выберите подписантов.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Название ППР</Label>
+                <Input value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} placeholder="ППР по линии" />
+              </div>
+              <div className="space-y-2">
+                <Label>Дата</Label>
+                <Input type="date" value={form.scheduledDate} onChange={event => setForm(current => ({ ...current, scheduledDate: event.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Линия</Label>
+                <Input value={`Линия ${form.line}`} disabled />
+              </div>
+              <div className="space-y-2">
+                <Label>Исполнитель</Label>
+                <Select
+                  value={form.assignedTo || NO_EXECUTOR_VALUE}
+                  onValueChange={value => setForm(current => ({ ...current, assignedTo: value === NO_EXECUTOR_VALUE ? '' : value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите исполнителя" />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="daily">{t('ppr.daily')}</SelectItem><SelectItem value="weekly">{t('ppr.weekly')}</SelectItem>
-                    <SelectItem value="monthly">{t('ppr.monthly')}</SelectItem><SelectItem value="quarterly">{t('ppr.quarterly')}</SelectItem>
-                    <SelectItem value="yearly">{t('ppr.yearly')}</SelectItem>
+                    <SelectItem value={NO_EXECUTOR_VALUE}>Не выбран</SelectItem>
+                    {people.map(person => <SelectItem key={person.id} value={person.id}>{person.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-              <div><Label>{t('ppr.description')}</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder={t('ppr.descPlaceholder')} /></div>
-              <div>
-                <Label>{t('ppr.checklist')}</Label>
-                {form.checklist.map((item, i) => (
-                  <div key={i} className="flex gap-2 mt-1">
-                    <Input value={item} onChange={e => { const c = [...form.checklist]; c[i] = e.target.value; setForm(f => ({ ...f, checklist: c })); }} placeholder={`${t('ppr.point')} ${i + 1}`} />
-                    {i === form.checklist.length - 1 && <Button variant="outline" size="icon" onClick={() => setForm(f => ({ ...f, checklist: [...f.checklist, ''] }))}><Plus className="h-4 w-4" /></Button>}
-                  </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Описание / причина</Label>
+              <Textarea value={form.description} onChange={event => setForm(current => ({ ...current, description: event.target.value }))} rows={4} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Комментарий</Label>
+              <Textarea value={form.notes} onChange={event => setForm(current => ({ ...current, notes: event.target.value }))} rows={3} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Файл</Label>
+              <Input type="file" onChange={event => setAttachmentFile(event.target.files?.[0] || null)} />
+            </div>
+
+            <div className="space-y-3">
+              <Label>Подписанты</Label>
+              <div className="grid gap-2 rounded-lg border p-3 md:grid-cols-2">
+                {profilesLoading ? (
+                  <div className="py-3 text-sm text-muted-foreground">Загрузка подписантов...</div>
+                ) : people.length === 0 ? (
+                  <div className="py-3 text-sm text-muted-foreground">Подписанты не найдены.</div>
+                ) : people.map(person => (
+                  <label key={person.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-muted">
+                    <Checkbox
+                      checked={form.signerIds.includes(person.id)}
+                      onCheckedChange={checked => toggleSigner(person.id, checked === true)}
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{person.name}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{person.email}</span>
+                    </span>
+                  </label>
                 ))}
               </div>
-              <Button className="w-full" onClick={() => createMutation.mutate()} disabled={!form.title || !form.equipment || !form.scheduled_date}>{t('ppr.createPlan')}</Button>
             </div>
-          </DialogContent>
-        </Dialog>
-      </div>
 
-      {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground">{t('common.loading')}</div>
-      ) : normalizedPlans.length === 0 ? (
-        <Card><CardContent className="py-12 text-center text-muted-foreground">{t('ppr.noPlans')}</CardContent></Card>
-      ) : (
-        <div className="grid gap-4">
-          <AnimatePresence>
-            {normalizedPlans.map((plan, i) => {
-              const sc = statusConfig[plan.status] || statusConfig.draft;
-              const StatusIcon = sc.icon;
-              return (
-                <motion.div key={plan.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-                  <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setSelectedPlan(plan)}>
-                    <CardContent className="p-5">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1"><StatusIcon className="h-4 w-4" /><h3 className="font-semibold truncate">{plan.title}</h3></div>
-                          <p className="text-sm text-muted-foreground">{plan.equipment} {plan.location && `• ${plan.location}`}</p>
-                          <p className="text-xs text-muted-foreground mt-1">{t('ppr.scheduledDate')}: {format(new Date(plan.scheduled_date), 'dd.MM.yyyy')} • {plan.frequency}</p>
-                        </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <Badge className={sc.color}>{t(sc.labelKey)}</Badge>
-                          <div className="flex gap-1">
-                            {plan.signed_by_executor && <Badge variant="outline" className="text-xs">✍️ {t('ppr.executor')}</Badge>}
-                            {plan.signed_by_manager && <Badge variant="outline" className="text-xs">✅ {t('ppr.manager')}</Badge>}
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-        </div>
+            <Button
+              onClick={submitCreate}
+              disabled={createMutation.isPending}
+            >
+              {createMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+              Сохранить и отправить на подпись
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
-      <Dialog open={!!selectedPlan} onOpenChange={() => setSelectedPlan(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <Card>
+        <CardHeader>
+          <CardTitle>Документы ППР</CardTitle>
+          <CardDescription>Статусы обновляются автоматически по решениям подписантов.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="py-8 text-center text-muted-foreground">Загрузка...</div>
+          ) : plans.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">ППР пока нет.</div>
+          ) : (
+            <div className="space-y-3">
+              <AnimatePresence>
+                {plans.map((plan, index) => {
+                  const cfg = statusConfig[plan.status] || statusConfig.draft;
+                  const StatusIcon = cfg.icon;
+                  return (
+                    <motion.div key={plan.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.03 }}>
+                      <Card className="cursor-pointer transition hover:bg-muted/40" onClick={() => setSelectedPlan(plan)}>
+                        <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <StatusIcon className="h-4 w-4 text-primary" />
+                              <h3 className="truncate font-semibold">{plan.title}</h3>
+                            </div>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              Линия {plan.line} • {format(new Date(plan.scheduled_date), 'dd.MM.yyyy')} • исполнитель: {getProfileName(plan.assigned_to)}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge className={cfg.color}>{cfg.label}</Badge>
+                            <Badge variant="outline">{plan.signers.length} подписантов</Badge>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={!!selectedPlan}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedPlan(null);
+            if (searchParams.has('pprId')) setSearchParams({}, { replace: true });
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
           {selectedPlan && (
             <>
               <DialogHeader>
-                <div className="flex items-center justify-between">
-                  <DialogTitle>{selectedPlan.title}</DialogTitle>
-                  <Button variant="outline" size="sm" onClick={() => exportToPDF(selectedPlan)}><Download className="h-4 w-4 mr-1" />PDF</Button>
-                </div>
+                <DialogTitle>{selectedPlan.title}</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div><span className="text-muted-foreground">{t('ppr.equipment')}:</span> <strong>{selectedPlan.equipment}</strong></div>
-                  <div><span className="text-muted-foreground">{t('ppr.location')}:</span> <strong>{selectedPlan.location || '-'}</strong></div>
-                  <div><span className="text-muted-foreground">{t('ppr.scheduledDate')}:</span> <strong>{format(new Date(selectedPlan.scheduled_date), 'dd.MM.yyyy')}</strong></div>
-                  <div><span className="text-muted-foreground">{t('ppr.frequency')}:</span> <strong>{selectedPlan.frequency}</strong></div>
-                  <div><span className="text-muted-foreground">{t('ppr.createdBy')}:</span> <strong>{getProfileName(selectedPlan.created_by)}</strong></div>
-                  <div><span className="text-muted-foreground">{t('common.status')}:</span> <Badge className={(statusConfig[selectedPlan.status] || statusConfig.draft).color}>{t((statusConfig[selectedPlan.status] || statusConfig.draft).labelKey)}</Badge></div>
+              <div className="space-y-5">
+                <div className="grid gap-3 text-sm md:grid-cols-2">
+                  <div><span className="text-muted-foreground">Линия:</span> <strong>Линия {selectedPlan.line}</strong></div>
+                  <div><span className="text-muted-foreground">Дата:</span> <strong>{format(new Date(selectedPlan.scheduled_date), 'dd.MM.yyyy')}</strong></div>
+                  <div><span className="text-muted-foreground">Исполнитель:</span> <strong>{getProfileName(selectedPlan.assigned_to)}</strong></div>
+                  <div><span className="text-muted-foreground">Статус:</span> <Badge className={(statusConfig[selectedPlan.status] || statusConfig.draft).color}>{(statusConfig[selectedPlan.status] || statusConfig.draft).label}</Badge></div>
+                  <div><span className="text-muted-foreground">Создал:</span> <strong>{getProfileName(selectedPlan.created_by)}</strong></div>
                 </div>
-                {selectedPlan.description && <div><Label>{t('ppr.description')}</Label><p className="text-sm mt-1">{selectedPlan.description}</p></div>}
-                {Array.isArray(selectedPlan.checklist) && selectedPlan.checklist.length > 0 && (
-                  <div><Label>{t('ppr.checklist')}</Label>
-                    <ul className="mt-1 space-y-1">{selectedPlan.checklist.map((item: any, i: number) => (
-                      <li key={i} className="flex items-center gap-2 text-sm">
-                        <span className={`h-4 w-4 rounded border flex items-center justify-center text-xs ${item.done ? 'bg-green-500 text-white' : 'bg-muted'}`}>{item.done ? '✓' : ''}</span>{item.text}
-                      </li>
-                    ))}</ul>
+
+                {selectedPlan.description && (
+                  <div>
+                    <Label>Описание / причина</Label>
+                    <p className="mt-1 text-sm">{selectedPlan.description}</p>
                   </div>
                 )}
-                <div className="border-t pt-4">
-                  <h4 className="font-semibold mb-3">{t('ppr.signatures')}</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Card className={selectedPlan.signed_by_executor ? 'border-green-500/50' : 'border-dashed'}>
-                      <CardContent className="p-4 text-center">
-                        <PenTool className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                        <p className="text-sm font-medium">{t('ppr.executor')}</p>
-                        {selectedPlan.signed_by_executor ? (
-                          <div className="mt-2"><p className="text-xs text-green-500 font-semibold">✅ {t('ppr.signed')}</p><p className="text-xs text-muted-foreground">{getProfileName(selectedPlan.signed_by_executor)}</p></div>
-                        ) : canSignAsExecutor(selectedPlan) ? (
-                          <Button size="sm" className="mt-2" onClick={() => signMutation.mutate({ planId: selectedPlan.id, type: 'executor' })}><PenTool className="h-3 w-3 mr-1" />{t('ppr.sign')}</Button>
-                        ) : <p className="text-xs text-muted-foreground mt-2">{t('ppr.awaitingSignature')}</p>}
-                      </CardContent>
-                    </Card>
-                    <Card className={selectedPlan.signed_by_manager ? 'border-green-500/50' : 'border-dashed'}>
-                      <CardContent className="p-4 text-center">
-                        <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                        <p className="text-sm font-medium">{t('ppr.manager')}</p>
-                        {selectedPlan.signed_by_manager ? (
-                          <div className="mt-2"><p className="text-xs text-green-500 font-semibold">✅ {t('ppr.approvedStatus')}</p><p className="text-xs text-muted-foreground">{getProfileName(selectedPlan.signed_by_manager)}</p></div>
-                        ) : canSignAsManager(selectedPlan) ? (
-                          <Button size="sm" className="mt-2" onClick={() => signMutation.mutate({ planId: selectedPlan.id, type: 'manager' })}><CheckCircle2 className="h-3 w-3 mr-1" />{t('ppr.approve')}</Button>
-                        ) : <p className="text-xs text-muted-foreground mt-2">{selectedPlan.signed_by_executor ? t('ppr.awaitingApproval') : t('ppr.executorFirst')}</p>}
-                      </CardContent>
-                    </Card>
+
+                {selectedPlan.notes && (
+                  <div>
+                    <Label>Комментарий</Label>
+                    <p className="mt-1 text-sm">{selectedPlan.notes}</p>
+                  </div>
+                )}
+
+                {selectedPlan.attachment?.fileName && (
+                  <div className="flex items-center justify-between rounded-lg border p-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Paperclip className="h-4 w-4 text-muted-foreground" />
+                      <span className="truncate text-sm">{selectedPlan.attachment.fileName}</span>
+                    </div>
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={api.getPPRAttachmentDownloadUrl(selectedPlan.id)}>
+                        <Download className="mr-2 h-4 w-4" />
+                        Скачать
+                      </a>
+                    </Button>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <Label>Подписанты</Label>
+                  <div className="grid gap-2">
+                    {selectedPlan.signers.map(signer => (
+                      <div key={signer.userId} className="flex items-center justify-between rounded-lg border p-3">
+                        <div>
+                          <p className="text-sm font-medium">{getProfileName(signer.userId)}</p>
+                          {signer.decidedAt && <p className="text-xs text-muted-foreground">{format(new Date(signer.decidedAt), 'dd.MM.yyyy HH:mm')}</p>}
+                        </div>
+                        <Badge className={signerStatusClass[signer.status]}>{signer.status}</Badge>
+                      </div>
+                    ))}
                   </div>
                 </div>
+
+                {canDecide && (
+                  <div className="flex justify-end gap-2 border-t pt-4">
+                    <Button variant="outline" onClick={() => decisionMutation.mutate({ planId: selectedPlan.id, decision: 'Rejected' })} disabled={decisionMutation.isPending}>
+                      <XCircle className="mr-2 h-4 w-4" />
+                      Reject
+                    </Button>
+                    <Button onClick={() => decisionMutation.mutate({ planId: selectedPlan.id, decision: 'Approved' })} disabled={decisionMutation.isPending}>
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Approve
+                    </Button>
+                  </div>
+                )}
               </div>
             </>
           )}

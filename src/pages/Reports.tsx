@@ -21,6 +21,13 @@ interface TicketStats {
   topCategories: { name: string; count: number }[];
 }
 
+const pick = <T,>(obj: any, ...keys: string[]): T | undefined => {
+  for (const key of keys) {
+    if (obj?.[key] !== undefined) return obj[key] as T;
+  }
+  return undefined;
+};
+
 const COLORS: Record<string, string> = {
   new: '#3b82f6', assigned: '#eab308', in_progress: '#a855f7', resolved: '#22c55e',
   closed: '#6b7280', reopened: '#ef4444', low: '#64748b', medium: '#3b82f6', high: '#f97316', critical: '#ef4444',
@@ -29,7 +36,7 @@ const COLORS: Record<string, string> = {
 export default function Reports() {
   const { t } = useLanguage();
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState('month');
+  const [period, setPeriod] = useState('quarter');
   const [stats, setStats] = useState<TicketStats>({ byStatus: [], byPriority: [], byDay: [], slaBreaches: 0, avgResolutionTime: 0, topCategories: [] });
 
   const STATUS_LABELS: Record<string, string> = {
@@ -51,7 +58,17 @@ export default function Reports() {
         api.getTickets(), api.getTicketSla(), api.getCategories(),
       ]);
 
-      const tickets = (ticketsRes.data || []).filter((t: any) => new Date(t.created_at) >= startDate);
+      const tickets = (ticketsRes.data || [])
+        .map((ticket: any) => ({
+          ...ticket,
+          created_at: pick<string>(ticket, 'created_at', 'createdAt') || '',
+          closed_at: pick<string | null>(ticket, 'closed_at', 'closedAt') || null,
+          category_id: pick<string | null>(ticket, 'category_id', 'categoryId') || null,
+        }))
+        .filter((ticket: any) => {
+          const createdAt = new Date(ticket.created_at);
+          return !Number.isNaN(createdAt.getTime()) && createdAt >= startDate;
+        });
 
       const statusCounts: Record<string, number> = {};
       const priorityCounts: Record<string, number> = {};

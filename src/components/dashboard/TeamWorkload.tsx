@@ -21,6 +21,12 @@ function getInitials(name: string) {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
+const positionTranslationKey: Record<string, string> = {
+  'инженер первой линии': 'dashboard.employeeKpi.position.firstLine',
+  'инженер второй линии': 'dashboard.employeeKpi.position.secondLine',
+  'инженер третьей линии': 'dashboard.employeeKpi.position.thirdLine',
+};
+
 export default function TeamWorkload({ members }: TeamWorkloadProps) {
   const { t } = useLanguage();
 
@@ -28,6 +34,12 @@ export default function TeamWorkload({ members }: TeamWorkloadProps) {
     if (tickets <= 3) return { label: t('dashboard.workload.low'), color: 'bg-chart-3/20 text-chart-3', progress: 25 };
     if (tickets <= 7) return { label: t('dashboard.workload.medium'), color: 'bg-chart-2/20 text-chart-2', progress: 60 };
     return { label: t('dashboard.workload.high'), color: 'bg-destructive/20 text-destructive', progress: 90 };
+  };
+
+  const getRoleLabel = (role: string) => {
+    const positionKey = positionTranslationKey[role.toLowerCase()];
+    if (positionKey) return t(positionKey);
+    return role;
   };
 
   return (
@@ -59,7 +71,7 @@ export default function TeamWorkload({ members }: TeamWorkloadProps) {
                     <div className="flex items-center justify-between mb-1">
                       <div>
                         <p className="text-sm font-medium truncate">{m.name}</p>
-                        <p className="text-[10px] text-muted-foreground">{m.role}</p>
+                        <p className="text-[10px] text-muted-foreground">{getRoleLabel(m.role)}</p>
                       </div>
                       <Badge variant="outline" className={`text-[10px] ${load.color}`}>
                         {load.label}

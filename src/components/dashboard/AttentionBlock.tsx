@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, Clock, UserX, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { getDisplayTicketTitle } from '@/lib/utils';
 
 interface AttentionItem {
   id: string;
@@ -66,7 +67,7 @@ export default function AttentionBlock({ items, onTicketClick }: AttentionBlockP
                   <config.icon className={`h-3.5 w-3.5 ${config.color}`} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{item.title}</p>
+                  <p className="text-sm font-medium truncate">{getDisplayTicketTitle(item.title)}</p>
                   <p className="text-[11px] text-muted-foreground">{config.label}</p>
                 </div>
                 <Badge variant="outline" className="text-[10px] shrink-0">{getPriorityLabel(item.priority)}</Badge>

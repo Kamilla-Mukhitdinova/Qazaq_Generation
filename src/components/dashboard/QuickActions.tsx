@@ -24,7 +24,7 @@ export default function QuickActions() {
         <CardTitle className="text-sm font-medium">{t('dashboard.quickActions')}</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {actions.map((action, i) => (
             <motion.div
               key={i}
@@ -34,11 +34,13 @@ export default function QuickActions() {
             >
               <Button
                 variant="outline"
-                className="w-full h-auto py-3 flex flex-col gap-1.5 hover:shadow-sm transition-shadow"
+                className="h-20 w-full flex-col gap-1.5 px-2 py-3 text-center whitespace-normal hover:shadow-sm transition-shadow"
                 onClick={() => navigate(action.href)}
               >
-                <action.icon className={`h-4 w-4 ${action.color}`} />
-                <span className="text-[10px] font-medium">{action.label}</span>
+                <action.icon className={`h-4 w-4 shrink-0 ${action.color}`} />
+                <span className="max-w-full text-[11px] font-medium leading-tight break-words">
+                  {action.label}
+                </span>
               </Button>
             </motion.div>
           ))}

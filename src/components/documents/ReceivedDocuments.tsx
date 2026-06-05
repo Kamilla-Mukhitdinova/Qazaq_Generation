@@ -29,6 +29,23 @@ interface SharedDoc {
   recipient_email?: string;
 }
 
+const normalizeDoc = (doc: any): SharedDoc => ({
+  id: doc.id,
+  sender_id: doc.sender_id || doc.senderId,
+  recipient_id: doc.recipient_id || doc.recipientId,
+  file_name: doc.file_name || doc.fileName,
+  file_path: doc.file_path || doc.filePath,
+  file_type: doc.file_type || doc.fileType,
+  file_size: doc.file_size ?? doc.fileSize ?? null,
+  message: doc.message ?? null,
+  is_read: doc.is_read ?? doc.isRead ?? false,
+  created_at: doc.created_at || doc.createdAt,
+  sender_name: doc.sender_name || doc.senderName,
+  sender_email: doc.sender_email || doc.senderEmail,
+  recipient_name: doc.recipient_name || doc.recipientName,
+  recipient_email: doc.recipient_email || doc.recipientEmail,
+});
+
 export default function ReceivedDocuments() {
   const { t } = useLanguage();
   const { user } = useAuth();
@@ -63,13 +80,23 @@ export default function ReceivedDocuments() {
         api.getReceivedDocuments(),
         api.getSentDocuments(),
       ]);
-      setReceived(recvData || []);
-      setSent(sentData || []);
+      const normalizedReceived = (recvData || []).map(normalizeDoc);
+      const normalizedSent = (sentData || []).map(normalizeDoc);
+      setReceived(normalizedReceived);
+      setSent(normalizedSent);
+      if (normalizedReceived.length === 0 && normalizedSent.length > 0) {
+        setTab('sent');
+      }
     } catch { /* ignore */ }
     setLoading(false);
   };
 
   useEffect(() => { fetchDocs(); }, [user]);
+
+  useEffect(() => {
+    window.addEventListener('documents-changed', fetchDocs);
+    return () => window.removeEventListener('documents-changed', fetchDocs);
+  }, [user]);
 
   const downloadDoc = async (doc: SharedDoc) => {
     if (!doc.is_read && doc.recipient_id === user?.id) {
@@ -113,6 +140,8 @@ export default function ReceivedDocuments() {
   };
 
   const unreadCount = received.filter(d => !d.is_read).length;
+  const receivedCount = received.length;
+  const sentCount = sent.length;
 
   const DocCard = ({ doc, isSent }: { doc: SharedDoc; isSent: boolean }) => (
     <div className={`flex items-start gap-4 p-4 rounded-lg border transition-colors ${
@@ -183,11 +212,12 @@ export default function ReceivedDocuments() {
           <TabsList className="grid w-full max-w-xs grid-cols-2">
             <TabsTrigger value="received" className="gap-1">
               <Mail className="h-4 w-4" />
-              {t('docs.received')} {unreadCount > 0 && `(${unreadCount})`}
+              {t('docs.received')} ({receivedCount})
+              {unreadCount > 0 && <Badge variant="destructive" className="ml-1 h-5 px-1.5 text-[10px]">{unreadCount}</Badge>}
             </TabsTrigger>
             <TabsTrigger value="sent" className="gap-1">
               <MailOpen className="h-4 w-4" />
-              {t('docs.sent')}
+              {t('docs.sent')} ({sentCount})
             </TabsTrigger>
           </TabsList>
 

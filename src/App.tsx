@@ -20,6 +20,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const AIChat = lazy(() => import("./pages/AIChat"));
 const Reports = lazy(() => import("./pages/Reports"));
 const ReportsManagement = lazy(() => import("./pages/ReportsManagement"));
+const EmployeePerformance = lazy(() => import("./pages/EmployeePerformance"));
 const PPRPlans = lazy(() => import("./pages/PPRPlans"));
 const AssetManagement = lazy(() => import("./pages/AssetManagement"));
 const InternalChat = lazy(() => import("./pages/InternalChat"));
@@ -31,14 +32,15 @@ const Documents = lazy(() => import("./pages/Documents"));
 const AIFloatingChat = lazy(() => import("@/components/AIFloatingChat").then((module) => ({ default: module.AIFloatingChat })));
 
 // Admin Pages
+const AdministrationSection = lazy(() => import("./pages/admin/AdministrationSection"));
 const UsersManagement = lazy(() => import("./pages/admin/UsersManagement"));
 const DepartmentsManagement = lazy(() => import("./pages/admin/DepartmentsManagement"));
 const CategoriesManagement = lazy(() => import("./pages/admin/CategoriesManagement"));
 const SLAManagement = lazy(() => import("./pages/admin/SLAManagement"));
 
 // Settings
-const TwoFactorSetup = lazy(() => import("./pages/settings/TwoFactorSetup"));
 const NotificationSettings = lazy(() => import("./pages/settings/NotificationSettings"));
+const TwoFactorSetup = lazy(() => import("./pages/settings/TwoFactorSetup"));
 
 // Layout
 import AppLayout from "./components/layout/AppLayout";
@@ -98,6 +100,7 @@ const App = () => {
                       <Route path="/ppr" element={<PPRPlans />} />
                       <Route path="/reports" element={<Reports />} />
                       <Route path="/reports/manage" element={<ReportsManagement />} />
+                      <Route path="/performance" element={<EmployeePerformance />} />
                       <Route path="/assets" element={<AssetManagement />} />
                       <Route path="/chat" element={<InternalChat />} />
                       <Route path="/meetings" element={<VideoConferences />} />
@@ -106,14 +109,37 @@ const App = () => {
                       <Route path="/knowledge/:id" element={<KnowledgeBaseArticle />} />
                       <Route path="/documents" element={<Documents />} />
                       {/* Admin routes */}
-                      <Route path="/admin/users" element={<UsersManagement />} />
+                      <Route path="/admin/users" element={<AdministrationSection />} />
+                      <Route path="/admin/groups" element={<AdministrationSection />} />
+                      <Route path="/admin/organizations" element={<AdministrationSection />} />
+                      <Route path="/admin/rules" element={<AdministrationSection />} />
+                      <Route path="/admin/directories" element={<AdministrationSection />} />
+                      <Route path="/admin/profiles" element={<AdministrationSection />} />
+                      <Route path="/admin/notification-queue" element={<AdministrationSection />} />
+                      <Route path="/admin/logs" element={<AdministrationSection />} />
+                      <Route path="/admin/equipment" element={<AdministrationSection />} />
+                      <Route path="/admin/glpi-inventory" element={<AdministrationSection />} />
+                      <Route path="/admin/forms" element={<AdministrationSection />} />
+                      {/* Existing CRUD pages kept for direct access */}
+                      <Route path="/admin/users/manage" element={<UsersManagement />} />
                       <Route path="/admin/departments" element={<DepartmentsManagement />} />
                       <Route path="/admin/categories" element={<CategoriesManagement />} />
                       <Route path="/admin/sla" element={<SLAManagement />} />
                       
                       {/* Settings */}
-                      <Route path="/settings/2fa" element={<TwoFactorSetup />} />
                       <Route path="/settings/notifications" element={<NotificationSettings />} />
+                      <Route path="/settings/2fa" element={<TwoFactorSetup />} />
+                      <Route path="/settings/authentication" element={<TwoFactorSetup />} />
+                      <Route path="/settings/dropdowns" element={<Navigate to="/admin/categories" replace />} />
+                      <Route path="/settings/components" element={<Navigate to="/assets?section=devices" replace />} />
+                      <Route path="/settings/service-levels" element={<Navigate to="/admin/sla" replace />} />
+                      <Route path="/settings/general" element={<Navigate to="/profile" replace />} />
+                      <Route path="/settings/unique-field" element={<Navigate to="/admin/categories" replace />} />
+                      <Route path="/settings/automatic-actions" element={<Navigate to="/notifications" replace />} />
+                      <Route path="/settings/receivers" element={<Navigate to="/notifications" replace />} />
+                      <Route path="/settings/external-links" element={<Navigate to="/knowledge" replace />} />
+                      <Route path="/settings/plugins" element={<Navigate to="/dashboard" replace />} />
+                      <Route path="/settings/object-management" element={<Navigate to="/assets" replace />} />
                     </Route>
 
                     {/* Redirects */}

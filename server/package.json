@@ -11,10 +11,14 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/db/seed.ts",
+    "db:seed-cartridges": "tsx src/db/seed-cartridges.ts",
+    "db:seed-phones-racks": "tsx src/db/seed-phones-racks.ts",
+    "db:seed-all-asset-sections": "tsx src/db/seed-all-asset-sections.ts",
     "db:test-user": "tsx src/db/create-test-user.ts",
     "db:keep-only-kamilla": "tsx src/db/keep-only-kamilla.ts",
     "db:create-liya": "tsx src/db/create-liya-user.ts",
-    "db:keep-kamilla-liya": "tsx src/db/keep-kamilla-and-liya.ts"
+    "db:keep-kamilla-liya": "tsx src/db/keep-kamilla-and-liya.ts",
+    "db:seed-demo-engineers": "tsx src/db/seed-demo-engineers.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -4,18 +4,22 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
+import { getDisplayTicketTitle } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, Loader2, Send, Clock, User, Calendar, Tag, Paperclip, Download, Trash2, FileText } from 'lucide-react';
+import { ArrowLeft, Loader2, Send, User, Calendar, Tag, Paperclip, Download, Trash2, FileText, Bot, CircleDot, UserCheck, PlayCircle, CheckCircle2, Archive, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
 import TicketKBLinks from '@/components/ticket/TicketKBLinks';
+import ReactMarkdown from 'react-markdown';
 
 type TicketStatus = 'new' | 'assigned' | 'in_progress' | 'resolved' | 'closed' | 'reopened';
 type TicketPriority = 'low' | 'medium' | 'high' | 'critical';
+type LanguageCode = 'kk' | 'ru' | 'en';
 
 interface TicketDetailData {
   id: string; title: string; description: string | null;
@@ -41,11 +45,47 @@ const pick = <T,>(obj: any, ...keys: string[]): T | undefined => {
   return undefined;
 };
 
+const getUserId = (profile: any) => pick<string>(profile, 'user_id', 'userId') || '';
+const getProfileName = (profile: any) => pick<string>(profile, 'name') || '';
+
+const statusDescriptions: Record<TicketStatus, Record<LanguageCode, string>> = {
+  new: {
+    kk: 'Өтінім тіркелді, әлі жұмысқа алынбады',
+    ru: 'Заявка создана, еще не взята в работу',
+    en: 'Request is created and not started yet',
+  },
+  assigned: {
+    kk: 'Орындаушы тағайындалды',
+    ru: 'Есть ответственный исполнитель',
+    en: 'An assignee is responsible for it',
+  },
+  in_progress: {
+    kk: 'Орындаушы мәселені шешіп жатыр',
+    ru: 'Исполнитель уже работает над заявкой',
+    en: 'The assignee is working on it',
+  },
+  resolved: {
+    kk: 'Шешім ұсынылды, жабуды күтіп тұр',
+    ru: 'Решение найдено, ожидает подтверждения',
+    en: 'Solution is provided and awaiting confirmation',
+  },
+  closed: {
+    kk: 'Өтінім толық аяқталды',
+    ru: 'Заявка полностью завершена',
+    en: 'Request is fully closed',
+  },
+  reopened: {
+    kk: 'Мәселе қайта ашылды',
+    ru: 'Заявка вернулась в работу',
+    en: 'Request was reopened',
+  },
+};
+
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, role } = useAuth();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -57,6 +97,9 @@ export default function TicketDetail() {
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [agents, setAgents] = useState<{ user_id: string; name: string }[]>([]);
+  const [aiAnalysis, setAiAnalysis] = useState('');
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
 
   const isAgent = role === 'agent' || role === 'admin' || role === 'manager';
 
@@ -80,13 +123,17 @@ export default function TicketDetail() {
     try {
       const data = await api.getTicket(id!);
       const [profiles, categories] = await Promise.all([api.getProfiles(), api.getCategories()]);
-      const profileMap = new Map((profiles || []).map((p: any) => [p.user_id, p.name]));
+      const profileMap = new Map((profiles || []).map((p: any) => [getUserId(p), getProfileName(p)]));
       const requesterId = pick<string>(data, 'requester_id', 'requesterId') || '';
       const assigneeId = pick<string | null>(data, 'assignee_id', 'assigneeId') || null;
       const categoryId = pick<string | null>(data, 'category_id', 'categoryId') || null;
       const createdAt = pick<string>(data, 'created_at', 'createdAt') || new Date().toISOString();
       const updatedAt = pick<string>(data, 'updated_at', 'updatedAt') || createdAt;
       const category = (categories || []).find((c: any) => c.id === categoryId);
+      const requesterName = profileMap.get(requesterId) || getProfileName(data.requester) || t('ticket.detail.unknown');
+      const assigneeName = assigneeId
+        ? profileMap.get(assigneeId) || getProfileName(data.assignee) || t('ticket.detail.unknown')
+        : undefined;
       setTicket({
         id: data.id,
         title: data.title,
@@ -98,8 +145,8 @@ export default function TicketDetail() {
         requester_id: requesterId,
         assignee_id: assigneeId,
         category_id: categoryId,
-        requester_name: profileMap.get(requesterId) || t('ticket.detail.unknown'),
-        assignee_name: assigneeId ? profileMap.get(assigneeId) || t('ticket.detail.unknown') : undefined,
+        requester_name: requesterName,
+        assignee_name: assigneeName,
         category_name: category?.name,
       });
     } catch (error) {
@@ -115,7 +162,7 @@ export default function TicketDetail() {
       const data = await api.getComments(id!);
       if (data && data.length > 0) {
         const profiles = await api.getProfiles();
-        const profileMap = new Map((profiles || []).map((p: any) => [p.user_id, p.name]));
+        const profileMap = new Map((profiles || []).map((p: any) => [getUserId(p), getProfileName(p)]));
         setComments(data.map((c: any) => {
           const authorId = pick<string>(c, 'author_id', 'authorId') || '';
           return normalizeComment(c, profileMap.get(authorId) || t('ticket.detail.unknown'));
@@ -147,8 +194,12 @@ export default function TicketDetail() {
   const fetchAgents = async () => {
     try {
       const [roles, profiles] = await Promise.all([api.getUserRoles(), api.getProfiles()]);
-      const agentRoleIds = (roles || []).filter((r: any) => ['agent', 'admin', 'manager'].includes(r.role)).map((r: any) => r.user_id);
-      setAgents((profiles || []).filter((p: any) => agentRoleIds.includes(p.user_id)));
+      const agentRoleIds = (roles || [])
+        .filter((r: any) => ['agent', 'admin', 'manager'].includes(r.role))
+        .map((r: any) => getUserId(r));
+      setAgents((profiles || [])
+        .map((p: any) => ({ user_id: getUserId(p), name: getProfileName(p) }))
+        .filter((p) => p.user_id && agentRoleIds.includes(p.user_id)));
     } catch (error) {
       console.error('Error fetching agents:', error);
     }
@@ -227,6 +278,20 @@ export default function TicketDetail() {
     }
   };
 
+  const handleAnalyzeTicket = async () => {
+    if (!ticket) return;
+    setAiAnalyzing(true);
+    setAiDialogOpen(true);
+    try {
+      const result = await api.analyzeTicketWithAI(ticket.id);
+      setAiAnalysis(result.analysis);
+    } catch (error: any) {
+      setAiAnalysis(`${t('common.error')}: ${error.message || ''}`);
+    } finally {
+      setAiAnalyzing(false);
+    }
+  };
+
   const formatFileSize = (bytes: number | null) => {
     if (!bytes) return '-';
     if (bytes < 1024) return `${bytes} B`;
@@ -239,6 +304,22 @@ export default function TicketDetail() {
     in_progress: 'bg-purple-500/10 text-purple-500', resolved: 'bg-green-500/10 text-green-500',
     closed: 'bg-muted text-muted-foreground', reopened: 'bg-red-500/10 text-red-500',
   };
+  const statusIndicatorColors: Record<TicketStatus, string> = {
+    new: 'bg-blue-500 text-blue-500',
+    assigned: 'bg-amber-500 text-amber-600',
+    in_progress: 'bg-violet-500 text-violet-600',
+    resolved: 'bg-emerald-500 text-emerald-600',
+    closed: 'bg-slate-500 text-slate-600',
+    reopened: 'bg-rose-500 text-rose-600',
+  };
+  const statusIcons = {
+    new: CircleDot,
+    assigned: UserCheck,
+    in_progress: PlayCircle,
+    resolved: CheckCircle2,
+    closed: Archive,
+    reopened: RotateCcw,
+  } satisfies Record<TicketStatus, typeof CircleDot>;
   const priorityColors: Record<string, string> = {
     low: 'bg-slate-500/10 text-slate-500', medium: 'bg-blue-500/10 text-blue-500',
     high: 'bg-orange-500/10 text-orange-500', critical: 'bg-red-500/10 text-red-500',
@@ -248,6 +329,7 @@ export default function TicketDetail() {
     new: 'ticket.status.new', assigned: 'ticket.status.assigned', in_progress: 'ticket.status.inProgress',
     resolved: 'ticket.status.resolved', closed: 'ticket.status.closed', reopened: 'ticket.status.reopened',
   };
+  const statusFlow: TicketStatus[] = ['new', 'assigned', 'in_progress', 'resolved', 'closed', 'reopened'];
   const priorityKeys: Record<string, string> = {
     low: 'ticket.priority.low', medium: 'ticket.priority.medium', high: 'ticket.priority.high', critical: 'ticket.priority.critical',
   };
@@ -261,6 +343,8 @@ export default function TicketDetail() {
     </div>
   );
 
+  const CurrentStatusIcon = statusIcons[ticket.status];
+
   return (
     <div className="space-y-6">
       <div className="flex items-start gap-4">
@@ -270,9 +354,26 @@ export default function TicketDetail() {
             <Badge variant="secondary" className={statusColors[ticket.status]}>{t(statusKeys[ticket.status])}</Badge>
             <Badge variant="secondary" className={priorityColors[ticket.priority]}>{t(priorityKeys[ticket.priority])}</Badge>
           </div>
-          <h1 className="text-2xl font-bold">{ticket.title}</h1>
+          <h1 className="text-2xl font-bold">{getDisplayTicketTitle(ticket.title)}</h1>
         </div>
+        <Button variant="outline" onClick={handleAnalyzeTicket} disabled={aiAnalyzing}>
+          {aiAnalyzing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bot className="mr-2 h-4 w-4" />}
+          AI анализ
+        </Button>
       </div>
+
+      <Dialog open={aiDialogOpen} onOpenChange={setAiDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>AI анализ тикета</DialogTitle></DialogHeader>
+          {aiAnalyzing ? (
+            <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+          ) : (
+            <div className="prose prose-sm dark:prose-invert max-w-none">
+              <ReactMarkdown>{aiAnalysis}</ReactMarkdown>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -377,13 +478,37 @@ export default function TicketDetail() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium">{t('ticket.detail.status')}</label>
                   <Select value={ticket.status} onValueChange={handleStatusChange}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="new">{t('ticket.status.new')}</SelectItem>
-                      <SelectItem value="assigned">{t('ticket.status.assigned')}</SelectItem>
-                      <SelectItem value="in_progress">{t('ticket.status.inProgress')}</SelectItem>
-                      <SelectItem value="resolved">{t('ticket.status.resolved')}</SelectItem>
-                      <SelectItem value="closed">{t('ticket.status.closed')}</SelectItem>
+                    <SelectTrigger className="h-auto min-h-12 py-2">
+                      <div className="flex min-w-0 items-center gap-3 text-left">
+                        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${statusColors[ticket.status]}`}>
+                          <CurrentStatusIcon className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{t(statusKeys[ticket.status])}</span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {statusDescriptions[ticket.status][language]}
+                          </span>
+                        </span>
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent className="w-[var(--radix-select-trigger-width)]">
+                      {statusFlow.map((status) => {
+                        const StatusIcon = statusIcons[status];
+                        return (
+                          <SelectItem key={status} value={status} className="py-3">
+                            <div className="flex items-center gap-3">
+                              <span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${statusIndicatorColors[status].split(' ')[0]}`} />
+                              <StatusIcon className={`h-4 w-4 shrink-0 ${statusIndicatorColors[status].split(' ')[1]}`} />
+                              <span className="min-w-0">
+                                <span className="block font-medium leading-none">{t(statusKeys[status])}</span>
+                                <span className="mt-1 block whitespace-normal text-xs leading-snug text-muted-foreground">
+                                  {statusDescriptions[status][language]}
+                                </span>
+                              </span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 </div>

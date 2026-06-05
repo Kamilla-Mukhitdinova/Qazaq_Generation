@@ -26,6 +26,7 @@ interface AuthContextType {
   profile: Profile | null;
   role: AppRole | null;
   loading: boolean;
+  refreshProfile: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null; requires2FA?: boolean; tempToken?: string }>;
   verify2FA: (tempToken: string, code: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, name: string) => Promise<{ error: Error | null }>;
@@ -40,21 +41,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const normalizeProfile = (p: any): Profile | null => p ? {
+    id: p.id,
+    user_id: p.userId || p.user_id,
+    email: p.email,
+    name: p.name,
+    avatar_url: p.avatarUrl || p.avatar_url,
+    department_id: p.departmentId || p.department_id,
+    group_id: p.groupId || p.group_id,
+  } : null;
+
+  const refreshProfile = async () => {
+    const { user: u, profile: p } = await api.getMe();
+    if (u) {
+      setUser(u);
+      setRole((u.role as AppRole) ?? 'employee');
+    }
+    setProfile(normalizeProfile(p));
+  };
+
   useEffect(() => {
     const token = api.getToken();
     if (token) {
       api.getMe()
         .then(({ user: u, profile: p }) => {
           setUser(u);
-          setProfile(p ? {
-            id: p.id,
-            user_id: p.userId || p.user_id,
-            email: p.email,
-            name: p.name,
-            avatar_url: p.avatarUrl || p.avatar_url,
-            department_id: p.departmentId || p.department_id,
-            group_id: p.groupId || p.group_id,
-          } : null);
+          setProfile(normalizeProfile(p));
           setRole((u.role as AppRole) ?? 'employee');
         })
         .catch(() => {
@@ -82,15 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const { profile: p } = await api.getMe();
         if (p) {
-          setProfile({
-            id: p.id,
-            user_id: p.userId || p.user_id,
-            email: p.email,
-            name: p.name,
-            avatar_url: p.avatarUrl || p.avatar_url,
-            department_id: p.departmentId || p.department_id,
-            group_id: p.groupId || p.group_id,
-          });
+          setProfile(normalizeProfile(p));
         }
       } catch {}
 
@@ -110,15 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const { profile: p } = await api.getMe();
         if (p) {
-          setProfile({
-            id: p.id,
-            user_id: p.userId || p.user_id,
-            email: p.email,
-            name: p.name,
-            avatar_url: p.avatarUrl || p.avatar_url,
-            department_id: p.departmentId || p.department_id,
-            group_id: p.groupId || p.group_id,
-          });
+          setProfile(normalizeProfile(p));
         }
       } catch {}
 
@@ -148,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, role, loading, signIn, verify2FA, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, profile, role, loading, refreshProfile, signIn, verify2FA, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   );

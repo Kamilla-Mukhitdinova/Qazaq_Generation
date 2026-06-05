@@ -20,13 +20,15 @@ router.post('/categories', requireRole('admin'), async (req, res) => {
 });
 
 router.patch('/categories/:id', requireRole('admin'), async (req, res) => {
+  const id = String(req.params.id);
   const [row] = await db.update(kbCategories).set(req.body)
-    .where(eq(kbCategories.id, req.params.id)).returning();
+    .where(eq(kbCategories.id, id)).returning();
   res.json(row);
 });
 
 router.delete('/categories/:id', requireRole('admin'), async (req, res) => {
-  await db.delete(kbCategories).where(eq(kbCategories.id, req.params.id));
+  const id = String(req.params.id);
+  await db.delete(kbCategories).where(eq(kbCategories.id, id));
   res.json({ success: true });
 });
 
@@ -72,8 +74,9 @@ router.get('/articles', async (req, res) => {
 
 // Get single article (+ increment view count)
 router.get('/articles/:id', async (req, res) => {
+  const id = String(req.params.id);
   const [article] = await db.select().from(kbArticles)
-    .where(eq(kbArticles.id, req.params.id));
+    .where(eq(kbArticles.id, id));
 
   if (!article) return res.status(404).json({ error: 'Мақала табылмады' });
 
@@ -85,7 +88,7 @@ router.get('/articles/:id', async (req, res) => {
   // Increment view count
   await db.update(kbArticles)
     .set({ viewCount: (article.viewCount || 0) + 1 })
-    .where(eq(kbArticles.id, req.params.id));
+    .where(eq(kbArticles.id, id));
 
   // Get author name
   const [author] = await db.select().from(profiles)
@@ -105,18 +108,20 @@ router.post('/articles', requireRole('agent', 'admin', 'manager'), async (req, r
 
 // Update article (staff only)
 router.patch('/articles/:id', requireRole('agent', 'admin', 'manager'), async (req, res) => {
+  const id = String(req.params.id);
   const [row] = await db.update(kbArticles).set({
     ...req.body,
     updatedAt: new Date(),
-  }).where(eq(kbArticles.id, req.params.id)).returning();
+  }).where(eq(kbArticles.id, id)).returning();
   res.json(row);
 });
 
 // Delete article (staff only)
 router.delete('/articles/:id', requireRole('agent', 'admin', 'manager'), async (req, res) => {
+  const id = String(req.params.id);
   // Delete linked ticket references first
-  await db.delete(ticketKbLinks).where(eq(ticketKbLinks.articleId, req.params.id));
-  await db.delete(kbArticles).where(eq(kbArticles.id, req.params.id));
+  await db.delete(ticketKbLinks).where(eq(ticketKbLinks.articleId, id));
+  await db.delete(kbArticles).where(eq(kbArticles.id, id));
   res.json({ success: true });
 });
 
@@ -124,8 +129,9 @@ router.delete('/articles/:id', requireRole('agent', 'admin', 'manager'), async (
 
 // Get links for a ticket
 router.get('/tickets/:ticketId/links', async (req, res) => {
+  const ticketId = String(req.params.ticketId);
   const links = await db.select().from(ticketKbLinks)
-    .where(eq(ticketKbLinks.ticketId, req.params.ticketId));
+    .where(eq(ticketKbLinks.ticketId, ticketId));
 
   // Enrich with article titles
   if (links.length === 0) return res.json([]);
@@ -144,8 +150,9 @@ router.get('/tickets/:ticketId/links', async (req, res) => {
 
 // Link article to ticket (staff only)
 router.post('/tickets/:ticketId/links', requireRole('agent', 'admin', 'manager'), async (req, res) => {
+  const ticketId = String(req.params.ticketId);
   const [row] = await db.insert(ticketKbLinks).values({
-    ticketId: req.params.ticketId,
+    ticketId,
     articleId: req.body.articleId,
     linkedBy: req.user!.userId,
   }).returning();
@@ -154,7 +161,8 @@ router.post('/tickets/:ticketId/links', requireRole('agent', 'admin', 'manager')
 
 // Unlink article from ticket (staff only)
 router.delete('/ticket-kb-links/:id', requireRole('agent', 'admin', 'manager'), async (req, res) => {
-  await db.delete(ticketKbLinks).where(eq(ticketKbLinks.id, req.params.id));
+  const id = String(req.params.id);
+  await db.delete(ticketKbLinks).where(eq(ticketKbLinks.id, id));
   res.json({ success: true });
 });
 

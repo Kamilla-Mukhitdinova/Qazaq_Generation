@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { FileText, Plus, Eye, Loader2, Bot, Calendar } from 'lucide-react';
+import { FileText, Plus, Eye, Loader2, Bot, Calendar, Download } from 'lucide-react';
 import { format } from 'date-fns';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
@@ -116,6 +116,28 @@ export default function ReportsManagement() {
     }
   };
 
+  const downloadAIReportFile = async () => {
+    if (!newReport.period_month) return;
+    setGenerating(true);
+    try {
+      const blob = await api.downloadAIReportFile(newReport.period_month);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ai-report-${newReport.period_month}.md`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: t('common.success'), description: 'AI отчёт сохранён в файл' });
+      fetchReports();
+    } catch (error: any) {
+      toast({ title: t('common.error'), description: error.message || t('common.error'), variant: 'destructive' });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 
   return (
@@ -136,6 +158,9 @@ export default function ReportsManagement() {
               </div>
               <Button variant="outline" onClick={generateAIReport} disabled={generating || !newReport.period_month}>
                 {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bot className="mr-2 h-4 w-4" />}{t('reportsManage.generateAI')}
+              </Button>
+              <Button variant="outline" onClick={downloadAIReportFile} disabled={generating || !newReport.period_month}>
+                {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}AI отчёт файлом
               </Button>
               <div className="space-y-2"><Label>{t('reportsManage.content')}</Label><Textarea value={newReport.content} onChange={(e) => setNewReport({ ...newReport, content: e.target.value })} placeholder={t('reportsManage.contentPlaceholder')} className="min-h-[300px] font-mono text-sm" /></div>
             </div>

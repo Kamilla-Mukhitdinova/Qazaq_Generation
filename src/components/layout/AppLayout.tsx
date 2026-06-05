@@ -37,10 +37,10 @@ export default function AppLayout() {
   }
 
   return (
-    <div className="min-h-screen flex bg-background relative overflow-hidden">
+    <div className="relative flex h-screen overflow-hidden bg-background">
       <div className="pointer-events-none fixed inset-0 bg-gradient-to-br from-background via-background to-secondary/20" />
       {/* Desktop Sidebar */}
-      <div className="hidden lg:block relative z-10">
+      <div className="relative z-10 hidden h-full shrink-0 lg:block">
         <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
       </div>
 
@@ -52,11 +52,11 @@ export default function AppLayout() {
       </Sheet>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0 relative z-10">
+      <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
         <Header
           onMenuClick={() => setMobileMenuOpen(true)}
         />
-        <main className="flex-1 overflow-auto p-6">
+        <main className="min-h-0 flex-1 overflow-auto p-6">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}

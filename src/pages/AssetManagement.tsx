@@ -1,12 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 import {
   AppWindow,
-  Boxes,
-  Cable,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -14,14 +12,12 @@ import {
   Download,
   FileDown,
   Filter,
-  HardDrive,
   Key,
   Monitor,
   Mouse,
   Package,
   Pencil,
   Plus,
-  Printer,
   RefreshCw,
   Search,
   Server,
@@ -45,6 +41,7 @@ import { toast } from '@/hooks/use-toast';
 
 const ASSET_TYPES = ['hardware', 'software', 'license', 'network', 'peripheral'] as const;
 const ASSET_STATUSES = ['active', 'in_stock', 'maintenance', 'retired', 'disposed'] as const;
+const ASSET_SECTION_STORAGE_KEY = 'qazaq_asset_sections';
 
 type AssetType = typeof ASSET_TYPES[number];
 type AssetStatus = typeof ASSET_STATUSES[number];
@@ -131,21 +128,94 @@ const statusColors: Record<AssetStatus, string> = {
   disposed: 'bg-destructive/10 text-destructive border-destructive/20',
 };
 
-const sectionConfig: Record<string, { labelKey: string; title: string; type: AssetType | 'all'; icon: typeof Monitor }> = {
-  panel: { labelKey: 'nav.assets.panel', title: 'Панель активов', type: 'all', icon: Package },
-  computers: { labelKey: 'nav.assets.computers', title: 'Компьютеры', type: 'hardware', icon: Monitor },
-  monitors: { labelKey: 'nav.assets.monitors', title: 'Мониторы', type: 'peripheral', icon: Monitor },
-  software: { labelKey: 'nav.assets.software', title: 'Программное обеспечение', type: 'software', icon: AppWindow },
-  'network-devices': { labelKey: 'nav.assets.networkDevices', title: 'Сетевые устройства', type: 'network', icon: Wifi },
-  printers: { labelKey: 'nav.assets.printers', title: 'Принтеры', type: 'peripheral', icon: Printer },
-  cartridges: { labelKey: 'nav.assets.cartridges', title: 'Картриджи', type: 'peripheral', icon: HardDrive },
-  consumables: { labelKey: 'nav.assets.consumables', title: 'Расходные материалы', type: 'peripheral', icon: Boxes },
-  cables: { labelKey: 'nav.assets.cables', title: 'Кабели', type: 'peripheral', icon: Cable },
-  global: { labelKey: 'nav.assets.global', title: 'Глобально', type: 'all', icon: Package },
+const sectionConfig: Record<string, { labelKey: string; title: string; type: AssetType | 'all' }> = {
+  panel: { labelKey: 'nav.assets.panel', title: 'Панель активов', type: 'all' },
+  computers: { labelKey: 'nav.assets.computers', title: 'Компьютеры', type: 'hardware' },
+  monitors: { labelKey: 'nav.assets.monitors', title: 'Мониторы', type: 'peripheral' },
+  software: { labelKey: 'nav.assets.software', title: 'Программное обеспечение', type: 'software' },
+  'network-devices': { labelKey: 'nav.assets.networkDevices', title: 'Сетевые устройства', type: 'network' },
+  devices: { labelKey: 'nav.assets.devices', title: 'Устройства', type: 'peripheral' },
+  printers: { labelKey: 'nav.assets.printers', title: 'Принтеры', type: 'peripheral' },
+  cartridges: { labelKey: 'nav.assets.cartridges', title: 'Картриджи', type: 'peripheral' },
+  consumables: { labelKey: 'nav.assets.consumables', title: 'Расходные материалы', type: 'peripheral' },
+  phones: { labelKey: 'nav.assets.phones', title: 'Телефоны', type: 'peripheral' },
+  racks: { labelKey: 'nav.assets.racks', title: 'Стойки', type: 'hardware' },
+  cases: { labelKey: 'nav.assets.cases', title: 'Корпуса', type: 'hardware' },
+  'power-distribution': { labelKey: 'nav.assets.powerDistribution', title: 'Распределители питания', type: 'hardware' },
+  'passive-devices': { labelKey: 'nav.assets.passiveDevices', title: 'Пассивные устройства', type: 'network' },
+  'unmanaged-assets': { labelKey: 'nav.assets.unmanagedAssets', title: 'Неуправляемые активы', type: 'peripheral' },
+  cables: { labelKey: 'nav.assets.cables', title: 'Кабели', type: 'peripheral' },
+  'sim-cards': { labelKey: 'nav.assets.simCards', title: 'SIM-карта элементы', type: 'peripheral' },
+  vpn: { labelKey: 'nav.assets.vpn', title: 'VPN', type: 'license' },
+  'report-analytics': { labelKey: 'nav.assets.reportAnalytics', title: 'Аналитика отчетов', type: 'software' },
+  global: { labelKey: 'nav.assets.global', title: 'Глобально', type: 'all' },
 };
 
-const sectionOrder = ['panel', 'computers', 'monitors', 'software', 'network-devices', 'printers', 'cartridges', 'consumables', 'cables', 'global'];
 const pageSizeOptions = [10, 25, 50, 100];
+
+const departmentNameTranslations: Record<string, Record<string, string>> = {
+  'it бөлімі': { kk: 'IT бөлімі', ru: 'IT отдел', en: 'IT Department' },
+  'it отдел': { kk: 'IT бөлімі', ru: 'IT отдел', en: 'IT Department' },
+  'it department': { kk: 'IT бөлімі', ru: 'IT отдел', en: 'IT Department' },
+  'hr бөлімі': { kk: 'HR бөлімі', ru: 'HR отдел', en: 'HR Department' },
+  'hr отдел': { kk: 'HR бөлімі', ru: 'HR отдел', en: 'HR Department' },
+  'hr department': { kk: 'HR бөлімі', ru: 'HR отдел', en: 'HR Department' },
+  'қаржы бөлімі': { kk: 'Қаржы бөлімі', ru: 'Финансовый отдел', en: 'Finance Department' },
+  'финансовый отдел': { kk: 'Қаржы бөлімі', ru: 'Финансовый отдел', en: 'Finance Department' },
+  'finance department': { kk: 'Қаржы бөлімі', ru: 'Финансовый отдел', en: 'Finance Department' },
+};
+
+const assetTextTranslations: Record<string, Record<string, string>> = {
+  'жұмыс компьютері - it бөлімі': { kk: 'Жұмыс компьютері - IT бөлімі', ru: 'Рабочий компьютер - IT отдел', en: 'Work computer - IT department' },
+  'ноутбук агента': { kk: 'Агент ноутбугы', ru: 'Ноутбук агента', en: 'Agent laptop' },
+  'резервтік ноутбук': { kk: 'Резервтік ноутбук', ru: 'Резервный ноутбук', en: 'Backup laptop' },
+  'принтер hr бөлімі': { kk: 'HR бөлімінің принтері', ru: 'Принтер HR отдела', en: 'HR department printer' },
+  'негізгі коммутатор': { kk: 'Негізгі коммутатор', ru: 'Основной коммутатор', en: 'Main switch' },
+  'ибп серверлік бөлме': { kk: 'Серверлік бөлме ИБП', ru: 'ИБП серверной комнаты', en: 'Server room UPS' },
+  'негізгі сервер': { kk: 'Негізгі сервер', ru: 'Основной сервер', en: 'Main server' },
+  'ескірген, пайдаланудан шығарылды': { kk: 'Ескірген, пайдаланудан шығарылды', ru: 'Устарел, выведен из эксплуатации', en: 'Outdated, decommissioned' },
+  '50 лицензия, жылдық жазылым': { kk: '50 лицензия, жылдық жазылым', ru: '50 лицензий, годовая подписка', en: '50 licenses, annual subscription' },
+  '50 лицензия': { kk: '50 лицензия', ru: '50 лицензий', en: '50 licenses' },
+  '5 лицензия, дизайн тобы': { kk: '5 лицензия, дизайн тобы', ru: '5 лицензий, дизайн-группа', en: '5 licenses, design team' },
+  '30 лицензиялық кілт': { kk: '30 лицензиялық кілт', ru: '30 лицензионных ключей', en: '30 license keys' },
+  'виртуализация серверлік бөлме': { kk: 'Серверлік бөлме виртуализациясы', ru: 'Виртуализация серверной комнаты', en: 'Server room virtualization' },
+  'жөндеуде - тонер ауыстыру': { kk: 'Жөндеуде - тонер ауыстыру', ru: 'На ремонте - замена тонера', en: 'Under repair - toner replacement' },
+  'hp laserjet pro m404dn үшін қара тонер': { kk: 'HP LaserJet Pro M404dn үшін қара тонер', ru: 'Черный тонер для HP LaserJet Pro M404dn', en: 'Black toner for HP LaserJet Pro M404dn' },
+  'жоғары сыйымдылықты қара тонер': { kk: 'Жоғары сыйымдылықты қара тонер', ru: 'Черный тонер повышенной емкости', en: 'High-yield black toner' },
+  'brother mfc-l2750dw үшін тонер': { kk: 'Brother MFC-L2750DW үшін тонер', ru: 'Тонер для Brother MFC-L2750DW', en: 'Toner for Brother MFC-L2750DW' },
+  'резервтік принтерлерге арналған тонер': { kk: 'Резервтік принтерлерге арналған тонер', ru: 'Тонер для резервных принтеров', en: 'Toner for backup printers' },
+  'қабылдау бөлмесі үшін ip телефон': { kk: 'Қабылдау бөлмесі үшін IP телефон', ru: 'IP-телефон для приемной', en: 'IP phone for reception' },
+  'байланыс орталығы операторы үшін телефон': { kk: 'Байланыс орталығы операторы үшін телефон', ru: 'Телефон для оператора контакт-центра', en: 'Phone for contact center operator' },
+  'келіссөз бөлмесіне арналған конференц-телефон': { kk: 'Келіссөз бөлмесіне арналған конференц-телефон', ru: 'Конференц-телефон для переговорной', en: 'Conference phone for meeting room' },
+  'серверлік бөлмедегі негізгі 42u стойка': { kk: 'Серверлік бөлмедегі негізгі 42U стойка', ru: 'Основная стойка 42U в серверной комнате', en: 'Main 42U rack in the server room' },
+  'желілік жабдыққа арналған қабырға стойкасы': { kk: 'Желілік жабдыққа арналған қабырға стойкасы', ru: 'Настенная стойка для сетевого оборудования', en: 'Wall rack for network equipment' },
+  'резервтік жабдыққа арналған стойка': { kk: 'Резервтік жабдыққа арналған стойка', ru: 'Стойка для резервного оборудования', en: 'Rack for backup equipment' },
+  'қоймадағы сканерлеу құрылғысы': { kk: 'Қоймадағы сканерлеу құрылғысы', ru: 'Сканирующее устройство для склада', en: 'Warehouse scanning device' },
+  'мобильді тексеріс планшеті': { kk: 'Мобильді тексеріс планшеті', ru: 'Планшет для мобильных проверок', en: 'Tablet for mobile inspections' },
+  'қызметкерлер бейдждерін оқу құрылғысы': { kk: 'Қызметкерлер бейдждерін оқу құрылғысы', ru: 'Считыватель бейджей сотрудников', en: 'Employee badge reader' },
+  'принтерлерге арналған a4 қағазы': { kk: 'Принтерлерге арналған A4 қағазы', ru: 'Бумага A4 для принтеров', en: 'A4 paper for printers' },
+  'жабдықтарды тазалауға арналған майлықтар': { kk: 'Жабдықтарды тазалауға арналған майлықтар', ru: 'Салфетки для очистки оборудования', en: 'Equipment cleaning wipes' },
+  'пернетақта мен тышқанға арналған батареялар': { kk: 'Пернетақта мен тышқанға арналған батареялар', ru: 'Батарейки для клавиатур и мышей', en: 'Batteries for keyboards and mice' },
+  'жаңа жұмыс станциясын жинауға арналған корпус': { kk: 'Жаңа жұмыс станциясын жинауға арналған корпус', ru: 'Корпус для сборки новой рабочей станции', en: 'Case for a new workstation build' },
+  'серверлік жабдыққа арналған корпус': { kk: 'Серверлік жабдыққа арналған корпус', ru: 'Корпус для серверного оборудования', en: 'Case for server equipment' },
+  'кеңсе стойкасына арналған pdu': { kk: 'Кеңсе стойкасына арналған PDU', ru: 'PDU для офисной стойки', en: 'PDU for office rack' },
+  'серверлік стойка үшін бақыланатын pdu': { kk: 'Серверлік стойка үшін бақыланатын PDU', ru: 'Управляемый PDU для серверной стойки', en: 'Managed PDU for server rack' },
+  'коммутациялық панель': { kk: 'Коммутациялық панель', ru: 'Коммутационная панель', en: 'Patch panel' },
+  'желі розеткаларына арналған keystone модульдері': { kk: 'Желі розеткаларына арналған Keystone модульдері', ru: 'Keystone-модули для сетевых розеток', en: 'Keystone modules for network outlets' },
+  'уақытша жобаға берілген проектор': { kk: 'Уақытша жобаға берілген проектор', ru: 'Проектор для временного проекта', en: 'Projector for a temporary project' },
+  'есепке алынбаған демонстрациялық экран': { kk: 'Есепке алынбаған демонстрациялық экран', ru: 'Неучтенный демонстрационный экран', en: 'Unmanaged demo display' },
+  'cat6 патч-кордтар жинағы': { kk: 'Cat6 патч-кордтар жинағы', ru: 'Набор патч-кордов Cat6', en: 'Cat6 patch cable set' },
+  'келіссөз бөлмесіне арналған hdmi кабельдер': { kk: 'Келіссөз бөлмесіне арналған HDMI кабельдер', ru: 'HDMI-кабели для переговорной', en: 'HDMI cables for meeting room' },
+  'резервтік корпоративтік sim-карта': { kk: 'Резервтік корпоративтік SIM-карта', ru: 'Резервная корпоративная SIM-карта', en: 'Backup corporate SIM card' },
+  'iot модеміне арналған sim-карта': { kk: 'IoT модеміне арналған SIM-карта', ru: 'SIM-карта для IoT-модема', en: 'SIM card for IoT modem' },
+  'қашықтағы қызметкерлерге арналған vpn лицензиялары': { kk: 'Қашықтағы қызметкерлерге арналған VPN лицензиялары', ru: 'VPN-лицензии для удаленных сотрудников', en: 'VPN licenses for remote employees' },
+  'аппараттық vpn токендері': { kk: 'Аппараттық VPN токендері', ru: 'Аппаратные VPN-токены', en: 'Hardware VPN tokens' },
+  'itsm өнімділігі бойынша power bi есебі': { kk: 'ITSM өнімділігі бойынша Power BI есебі', ru: 'Power BI отчет по эффективности ITSM', en: 'Power BI report for ITSM performance' },
+  'инфрақұрылым мониторингіне арналған dashboard': { kk: 'Инфрақұрылым мониторингіне арналған dashboard', ru: 'Dashboard для мониторинга инфраструктуры', en: 'Dashboard for infrastructure monitoring' },
+  'қойма': { kk: 'Қойма', ru: 'Склад', en: 'Warehouse' },
+  'серверлік бөлме': { kk: 'Серверлік бөлме', ru: 'Серверная комната', en: 'Server room' },
+  'сервис орталығы': { kk: 'Сервис орталығы', ru: 'Сервисный центр', en: 'Service center' },
+};
 
 function normalizeAsset(asset: any): NormalizedAsset {
   return {
@@ -172,11 +242,90 @@ function getAssetIp(asset: NormalizedAsset) {
   return candidates.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g)?.join('\n') || '-';
 }
 
+function getDepartmentName(name: string, language: string) {
+  const normalizedName = name.trim().toLowerCase();
+  return departmentNameTranslations[normalizedName]?.[language] || name;
+}
+
+function getLocalizedAssetText(value: string, language: string) {
+  const normalizedValue = value.trim().toLowerCase();
+  return assetTextTranslations[normalizedValue]?.[language] || value;
+}
+
+function includesAny(value: string, keywords: string[]) {
+  return keywords.some((keyword) => value.includes(keyword));
+}
+
+function getStoredAssetSections() {
+  try {
+    return JSON.parse(localStorage.getItem(ASSET_SECTION_STORAGE_KEY) || '{}') as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function matchesAssetSection(
+  asset: NormalizedAsset,
+  section: string,
+  currentSection: { type: AssetType | 'all' },
+  assetSections: Record<string, string>,
+) {
+  if (currentSection.type === 'all') return true;
+
+  const savedSection = assetSections[asset.id];
+  if (savedSection) return savedSection === section;
+
+  const primaryText = [
+    asset.name,
+    asset.manufacturer,
+    asset.model,
+    asset.inventory_number,
+    asset.serial_number,
+  ].join(' ').toLowerCase();
+
+  switch (section) {
+    case 'monitors':
+      return includesAny(primaryText, ['monitor', 'монитор', 'display', 'samsung']);
+    case 'printers':
+      return includesAny(primaryText, ['printer', 'принтер', 'laserjet', 'mfc', 'brother']);
+    case 'cartridges':
+      return includesAny(primaryText, ['cartridge', 'картридж', 'toner', 'тонер', 'cf259', 'tn-2420', 'crg057']);
+    case 'phones':
+      return includesAny(primaryText, ['phone', 'телефон', 'yealink', 'cisco ip', 'polycom', 'conference']);
+    case 'racks':
+      return includesAny(primaryText, ['rack', 'стойка', 'шкаф', '42u', '12u', 'apc netshelter', 'wall mount']);
+    case 'cables':
+      return includesAny(primaryText, ['cable', 'кабель', 'кабели', 'кабельдер']);
+    case 'network-devices':
+      return asset.asset_type === 'network' || includesAny(primaryText, ['switch', 'router', 'cisco', 'catalyst', 'коммутатор']);
+    case 'devices':
+      return includesAny(primaryText, ['scanner', 'tablet', 'reader', 'сканер', 'планшет', 'badge']);
+    case 'consumables':
+      return includesAny(primaryText, ['paper', 'wipe', 'battery', 'бумага', 'салфетки', 'batteries', 'a4']);
+    case 'cases':
+      return includesAny(primaryText, ['case', 'корпус', 'tower', 'chassis']);
+    case 'power-distribution':
+      return includesAny(primaryText, ['pdu', 'power distribution', 'распределитель', 'apc ap']);
+    case 'passive-devices':
+      return includesAny(primaryText, ['patch panel', 'keystone', 'патч-панель', 'панель', 'module']);
+    case 'unmanaged-assets':
+      return includesAny(primaryText, ['unmanaged', 'demo', 'projector', 'демо', 'проектор']);
+    case 'sim-cards':
+      return includesAny(primaryText, ['sim', 'сим', 'iot']);
+    case 'vpn':
+      return includesAny(primaryText, ['vpn', 'fortinet', 'token']);
+    case 'report-analytics':
+      return includesAny(primaryText, ['power bi', 'grafana', 'dashboard', 'analytics', 'report']);
+    default:
+      return asset.asset_type === currentSection.type;
+  }
+}
+
 export default function AssetManagement() {
   const { language, t } = useLanguage();
   const { role } = useAuth();
   const queryClient = useQueryClient();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const section = searchParams.get('section') || 'computers';
   const currentSection = sectionConfig[section] || sectionConfig.computers;
   const [search, setSearch] = useState('');
@@ -184,9 +333,11 @@ export default function AssetManagement() {
   const [pageSize, setPageSize] = useState(50);
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<AssetForm>(emptyForm);
+  const [assetSections, setAssetSections] = useState<Record<string, string>>(getStoredAssetSections);
 
   const canManage = role === 'admin' || role === 'manager';
 
@@ -208,12 +359,26 @@ export default function AssetManagement() {
   const saveMutation = useMutation({
     mutationFn: async (formData: AssetForm) => {
       if (editingId) {
-        await api.updateAsset(editingId, formData);
+        return api.updateAsset(editingId, formData);
       } else {
-        await api.createAsset(formData);
+        return api.createAsset(formData);
       }
     },
-    onSuccess: () => {
+    onSuccess: (savedAsset: any) => {
+      queryClient.setQueryData<any[]>(['assets'], (current = []) => {
+        if (!savedAsset?.id) return current;
+        const withoutSaved = current.filter((asset) => asset.id !== savedAsset.id);
+        return [savedAsset, ...withoutSaved];
+      });
+
+      if (!editingId && savedAsset?.id && currentSection.type !== 'all') {
+        setAssetSections((current) => {
+          const next = { ...current, [savedAsset.id]: section };
+          localStorage.setItem(ASSET_SECTION_STORAGE_KEY, JSON.stringify(next));
+          return next;
+        });
+      }
+
       queryClient.invalidateQueries({ queryKey: ['assets'] });
       setDialogOpen(false);
       setEditingId(null);
@@ -234,7 +399,7 @@ export default function AssetManagement() {
 
   const visibleAssets = useMemo(() => {
     return assets.filter((asset) => {
-      const sectionMatches = currentSection.type === 'all' || asset.asset_type === currentSection.type;
+      const sectionMatches = matchesAssetSection(asset, section, currentSection, assetSections);
       const query = search.toLowerCase().trim();
       const searchMatches = !query || [
         asset.name,
@@ -249,13 +414,18 @@ export default function AssetManagement() {
       const statusMatches = filterStatus === 'all' || asset.status === filterStatus;
       return sectionMatches && searchMatches && statusMatches;
     });
-  }, [assets, currentSection.type, filterStatus, search]);
+  }, [assetSections, assets, currentSection, filterStatus, search, section]);
 
   const totalPages = Math.max(1, Math.ceil(visibleAssets.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const paginatedAssets = visibleAssets.slice((safePage - 1) * pageSize, safePage * pageSize);
   const selectedOnPage = paginatedAssets.length > 0 && paginatedAssets.every((asset) => selectedIds.includes(asset.id));
   const selectedRows = visibleAssets.filter((asset) => selectedIds.includes(asset.id));
+  const selectedVisibleIds = selectedRows.map((asset) => asset.id);
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [filterStatus, search, section]);
 
   const openEdit = (asset: NormalizedAsset) => {
     setEditingId(asset.id);
@@ -286,12 +456,6 @@ export default function AssetManagement() {
     setDialogOpen(true);
   };
 
-  const toggleSection = (nextSection: string) => {
-    setSearchParams({ section: nextSection });
-    setPage(1);
-    setSelectedIds([]);
-  };
-
   const toggleSelected = (id: string) => {
     setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   };
@@ -305,7 +469,18 @@ export default function AssetManagement() {
   };
 
   const exportData = () => {
-    const headers = ['Наименование', 'Организация', 'Серийный номер', 'Инвентарный номер', 'Тип', 'Сетевая структура - IP', 'Модель', 'Пользователь', 'Комментарии', 'Операционная система'];
+    const headers = [
+      t('common.name'),
+      t('assets.organization'),
+      t('assets.serialNumber'),
+      t('assets.inventoryNumber'),
+      t('assets.type'),
+      t('assets.networkIp'),
+      t('assets.model'),
+      t('assets.user'),
+      t('assets.comments'),
+      t('assets.operatingSystem'),
+    ];
     const rows = (selectedRows.length > 0 ? selectedRows : visibleAssets).map((asset) => [
       asset.name,
       'Qazaq Generation / ID Support',
@@ -315,7 +490,7 @@ export default function AssetManagement() {
       getAssetIp(asset),
       [asset.manufacturer, asset.model].filter(Boolean).join(' '),
       asset.assigned_to_name,
-      asset.notes,
+      asset.notes ? getLocalizedAssetText(asset.notes, language) : '',
       asset.asset_type === 'hardware' ? 'Linux / Windows' : '-',
     ]);
 
@@ -332,11 +507,21 @@ export default function AssetManagement() {
   };
 
   const bulkDelete = async () => {
-    if (!canManage || selectedIds.length === 0) return;
-    await Promise.all(selectedIds.map((id) => api.deleteAsset(id)));
-    queryClient.invalidateQueries({ queryKey: ['assets'] });
-    setSelectedIds([]);
-    toast({ title: t('assets.assetDeleted') });
+    if (!canManage || selectedVisibleIds.length === 0 || bulkDeleting) return;
+    const confirmed = window.confirm(`${t('assets.deleteSelected')} (${selectedVisibleIds.length})?`);
+    if (!confirmed) return;
+
+    setBulkDeleting(true);
+    try {
+      await Promise.all(selectedVisibleIds.map((id) => api.deleteAsset(id)));
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      setSelectedIds([]);
+      toast({ title: t('assets.assetDeleted') });
+    } catch (error: any) {
+      toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+    } finally {
+      setBulkDeleting(false);
+    }
   };
 
   const toolbarButton = 'h-9 border-primary/30 bg-background text-primary hover:bg-primary/10';
@@ -377,50 +562,22 @@ export default function AssetManagement() {
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[230px_minmax(0,1fr)]">
-        <aside className="rounded-lg border bg-card p-2 shadow-sm">
-          <div className="px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">Активы</div>
-          <nav className="space-y-1">
-            {sectionOrder.map((item) => {
-              const config = sectionConfig[item];
-              const Icon = config.icon;
-              const count = assets.filter((asset) => config.type === 'all' || asset.asset_type === config.type).length;
-              const active = item === section;
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => toggleSection(item)}
-                  className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                    active ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  }`}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{t(config.labelKey) || config.title}</span>
-                  </span>
-                  <span className={`ml-2 text-xs ${active ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{count}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </aside>
-
+      <div>
         <section className="min-w-0 rounded-lg border bg-card shadow-sm">
           <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               {canManage && (
                 <Button variant="outline" className={toolbarButton} onClick={openCreate}>
                   <Plus className="mr-2 h-4 w-4" />
-                  Добавить
+                  {t('common.add')}
                 </Button>
               )}
               <Button variant="outline" className={toolbarButton}>
                 <Filter className="mr-2 h-4 w-4" />
-                Список
+                {t('assets.list')}
               </Button>
               <Button variant="outline" className={toolbarButton}>
-                Шаблоны
+                {t('assets.templates')}
               </Button>
               <Select value={filterStatus} onValueChange={(value) => { setFilterStatus(value); setPage(1); }}>
                 <SelectTrigger className="h-9 w-[165px]">
@@ -438,8 +595,19 @@ export default function AssetManagement() {
             <div className="flex flex-wrap items-center gap-2">
               {selectedIds.length > 0 && (
                 <Badge variant="outline" className="h-9 rounded-md px-3">
-                  Выбрано: {selectedIds.length}
+                  {t('assets.selected')}: {selectedVisibleIds.length}
                 </Badge>
+              )}
+              {canManage && selectedVisibleIds.length > 0 && (
+                <Button
+                  variant="destructive"
+                  className="h-9 gap-2"
+                  onClick={bulkDelete}
+                  disabled={bulkDeleting}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {bulkDeleting ? t('common.loading') : t('assets.deleteSelected')}
+                </Button>
               )}
               <Button variant="outline" size="icon" className={toolbarButton} onClick={() => queryClient.invalidateQueries({ queryKey: ['assets'] })}>
                 <RefreshCw className="h-4 w-4" />
@@ -455,12 +623,6 @@ export default function AssetManagement() {
                     <Download className="mr-2 h-4 w-4" />
                     {t('assets.exportCsv')}
                   </DropdownMenuItem>
-                  {canManage && selectedIds.length > 0 && (
-                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={bulkDelete}>
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Удалить выбранные
-                    </DropdownMenuItem>
-                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -471,18 +633,18 @@ export default function AssetManagement() {
               <TableHeader>
                 <TableRow className="bg-muted/50 hover:bg-muted/50">
                   <TableHead className="w-10">
-                    <Checkbox checked={selectedOnPage} onCheckedChange={togglePageSelected} aria-label="Выбрать страницу" />
+                    <Checkbox checked={selectedOnPage} onCheckedChange={togglePageSelected} aria-label={t('assets.selectPage')} />
                   </TableHead>
-                  <TableHead className="w-[170px] uppercase text-[11px]">Наименование</TableHead>
-                  <TableHead className="w-[190px] uppercase text-[11px]">Организация</TableHead>
-                  <TableHead className="w-[120px] uppercase text-[11px]">Серийный номер</TableHead>
-                  <TableHead className="w-[130px] uppercase text-[11px]">Инвентарный номер</TableHead>
-                  <TableHead className="w-[150px] uppercase text-[11px]">Тип</TableHead>
-                  <TableHead className="w-[170px] uppercase text-[11px]">Сетевая структура - IP</TableHead>
-                  <TableHead className="w-[160px] uppercase text-[11px]">Модель</TableHead>
-                  <TableHead className="w-[150px] uppercase text-[11px]">Пользователь</TableHead>
-                  <TableHead className="w-[210px] uppercase text-[11px]">Комментарии</TableHead>
-                  <TableHead className="w-[160px] uppercase text-[11px]">Операционная система</TableHead>
+                  <TableHead className="w-[170px] uppercase text-[11px]">{t('common.name')}</TableHead>
+                  <TableHead className="w-[190px] uppercase text-[11px]">{t('assets.organization')}</TableHead>
+                  <TableHead className="w-[120px] uppercase text-[11px]">{t('assets.serialNumber')}</TableHead>
+                  <TableHead className="w-[130px] uppercase text-[11px]">{t('assets.inventoryNumber')}</TableHead>
+                  <TableHead className="w-[150px] uppercase text-[11px]">{t('assets.type')}</TableHead>
+                  <TableHead className="w-[170px] uppercase text-[11px]">{t('assets.networkIp')}</TableHead>
+                  <TableHead className="w-[160px] uppercase text-[11px]">{t('assets.model')}</TableHead>
+                  <TableHead className="w-[150px] uppercase text-[11px]">{t('assets.user')}</TableHead>
+                  <TableHead className="w-[210px] uppercase text-[11px]">{t('assets.comments')}</TableHead>
+                  <TableHead className="w-[160px] uppercase text-[11px]">{t('assets.operatingSystem')}</TableHead>
                   {canManage && <TableHead className="w-[90px]" />}
                 </TableRow>
               </TableHeader>
@@ -528,7 +690,13 @@ export default function AssetManagement() {
                         {[asset.manufacturer, asset.model].filter(Boolean).join(' ') || '-'}
                       </TableCell>
                       <TableCell className="align-top text-primary">{asset.assigned_to_name || '-'}</TableCell>
-                      <TableCell className="align-top text-muted-foreground">{asset.notes || asset.location || '-'}</TableCell>
+                      <TableCell className="align-top text-muted-foreground">
+                        {asset.notes
+                          ? getLocalizedAssetText(asset.notes, language)
+                          : asset.location
+                            ? getLocalizedAssetText(asset.location, language)
+                            : '-'}
+                      </TableCell>
                       <TableCell className="align-top">
                         <Badge className={statusColors[asset.status]} variant="outline">
                           {asset.asset_type === 'hardware' ? 'Linux / Windows' : statusLabels[asset.status][language]}
@@ -563,10 +731,13 @@ export default function AssetManagement() {
                   {pageSizeOptions.map((size) => <SelectItem key={size} value={String(size)}>{size}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <span>строк на странице</span>
+              <span>{t('assets.rowsPerPage')}</span>
             </div>
             <div className="text-sm text-muted-foreground">
-              Отображаются строки с {visibleAssets.length === 0 ? 0 : (safePage - 1) * pageSize + 1} по {Math.min(safePage * pageSize, visibleAssets.length)} из {visibleAssets.length}
+              {t('assets.paginationSummary')
+                .replace('{from}', String(visibleAssets.length === 0 ? 0 : (safePage - 1) * pageSize + 1))
+                .replace('{to}', String(Math.min(safePage * pageSize, visibleAssets.length)))
+                .replace('{total}', String(visibleAssets.length))}
             </div>
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="icon" disabled={safePage === 1} onClick={() => setPage(1)}><ChevronsLeft className="h-4 w-4" /></Button>
@@ -632,7 +803,11 @@ export default function AssetManagement() {
               <Select value={form.department_id} onValueChange={(value) => setForm({ ...form, department_id: value })}>
                 <SelectTrigger><SelectValue placeholder="-" /></SelectTrigger>
                 <SelectContent>
-                  {departments.map((department: any) => <SelectItem key={department.id} value={department.id}>{department.name}</SelectItem>)}
+                  {departments.map((department: any) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {getDepartmentName(department.name, language)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

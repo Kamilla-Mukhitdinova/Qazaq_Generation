@@ -21,7 +21,8 @@ router.get('/', async (req, res) => {
 // Get profile by user ID
 router.get('/:userId', async (req, res) => {
   try {
-    const [profile] = await db.select().from(profiles).where(eq(profiles.userId, req.params.userId)).limit(1);
+    const userId = String(req.params.userId);
+    const [profile] = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
     if (!profile) return res.status(404).json({ error: 'Профиль табылмады' });
     return res.json(profile);
   } catch (err) {
@@ -52,15 +53,16 @@ router.patch('/me', async (req, res) => {
 // Admin: update user role
 router.patch('/:userId/role', requireRole('admin'), async (req, res) => {
   try {
+    const userId = String(req.params.userId);
     const { role } = req.body;
-    const [existing] = await db.select().from(userRoles).where(eq(userRoles.userId, req.params.userId)).limit(1);
+    const [existing] = await db.select().from(userRoles).where(eq(userRoles.userId, userId)).limit(1);
 
     if (existing) {
       const [updated] = await db.update(userRoles).set({ role })
-        .where(eq(userRoles.userId, req.params.userId)).returning();
+        .where(eq(userRoles.userId, userId)).returning();
       return res.json(updated);
     } else {
-      const [created] = await db.insert(userRoles).values({ userId: req.params.userId, role }).returning();
+      const [created] = await db.insert(userRoles).values({ userId, role }).returning();
       return res.json(created);
     }
   } catch (err) {

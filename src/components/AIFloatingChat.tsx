@@ -102,6 +102,17 @@ export function AIFloatingChat() {
     setIsLoading(true);
 
     try {
+      if (looksLikeAgentCommand(msg)) {
+        const result = await api.runAIAgent(msg, { language });
+        const ticketId = result.ticket?.id;
+        const content = [
+          result.message || 'Готово.',
+          ticketId ? `\n\nТикет: [${ticketId.slice(0, 8)}](/tickets/${ticketId})` : '',
+        ].join('');
+        setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content }]);
+        return;
+      }
+
       const response = await fetch(
         `${API_BASE}/ai-chat`,
         {
@@ -161,6 +172,24 @@ export function AIFloatingChat() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const looksLikeAgentCommand = (text: string) => {
+    const value = text.toLowerCase();
+    return [
+      'создай тикет',
+      'создать тикет',
+      'создай заявку',
+      'создать заявку',
+      'поменяй статус',
+      'измени статус',
+      'закрой тикет',
+      'назначь тикет',
+      'назначить тикет',
+      'assign ticket',
+      'create ticket',
+      'change status',
+    ].some((pattern) => value.includes(pattern));
   };
 
   if (isAuthPage) {

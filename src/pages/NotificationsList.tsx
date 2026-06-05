@@ -6,8 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis } from '@/components/ui/pagination';
-import { Bell, CheckCheck, AlertTriangle, UserPlus, MessageSquare, RefreshCw, Filter } from 'lucide-react';
-import { format } from 'date-fns';
+import { Bell, CalendarPlus, CheckCheck, AlertTriangle, UserPlus, MessageSquare, RefreshCw, Filter, ClipboardCheck } from 'lucide-react';
+import { formatDate } from '@/lib/date';
 import { useNavigate } from 'react-router-dom';
 
 export default function NotificationsList() {
@@ -24,11 +24,21 @@ export default function NotificationsList() {
     ticket_assigned: { icon: UserPlus, labelKey: 'notifList.assigned', color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400' },
     ticket_comment: { icon: MessageSquare, labelKey: 'notifList.newComment', color: 'bg-green-500/10 text-green-600 dark:text-green-400' },
     sla_breach: { icon: AlertTriangle, labelKey: 'notifList.slaBreach', color: 'bg-red-500/10 text-red-600 dark:text-red-400' },
+    meeting_invite: { icon: CalendarPlus, labelKey: 'notifList.meetingInvite', color: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400' },
+    ppr_signer_added: { icon: ClipboardCheck, labelKey: 'nav.support.ppr', color: 'bg-amber-500/10 text-amber-700 dark:text-amber-400' },
   };
 
   const fetchNotifications = async () => {
     setLoading(true);
-    try { setNotifications(await api.getNotifications() || []); } catch (err) { console.error(err); } finally { setLoading(false); }
+    try {
+      const data = await api.getNotifications();
+      setNotifications((data || []).map((n: any) => ({
+        ...n,
+        is_read: n.is_read ?? n.isRead ?? false,
+        created_at: n.created_at ?? n.createdAt ?? null,
+        payload_json: n.payload_json ?? n.payloadJson ?? {},
+      })));
+    } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
   useEffect(() => { fetchNotifications(); }, []);
@@ -54,8 +64,13 @@ export default function NotificationsList() {
 
   const handleClick = (n: any) => {
     if (!n.is_read) handleMarkRead(n.id);
-    const ticketId = n.payload_json?.ticketId;
+    const payload = n.payload_json || n.payloadJson || {};
+    const ticketId = payload.ticketId;
+    const pprPlanId = payload.pprPlanId;
+    const meetingLink = payload.meetingLink;
     if (ticketId) navigate(`/tickets/${ticketId}`);
+    if (pprPlanId) navigate(`/ppr?pprId=${encodeURIComponent(pprPlanId)}`);
+    if (meetingLink) window.location.href = meetingLink;
   };
 
   return (
@@ -106,7 +121,7 @@ export default function NotificationsList() {
                       {n.message && <p className="text-sm text-muted-foreground mt-0.5 truncate">{n.message}</p>}
                       <div className="flex items-center gap-2 mt-1">
                         <Badge variant="outline" className="text-xs">{t(cfg.labelKey)}</Badge>
-                        <span className="text-xs text-muted-foreground">{format(new Date(n.created_at), 'dd.MM.yyyy HH:mm')}</span>
+                        <span className="text-xs text-muted-foreground">{formatDate(n.created_at, 'dd.MM.yyyy HH:mm')}</span>
                       </div>
                     </div>
                   </div>

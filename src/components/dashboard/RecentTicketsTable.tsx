@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatDate } from '@/lib/date';
+import { getDisplayTicketTitle } from '@/lib/utils';
 
 interface RecentTicket {
   id: string;
@@ -105,7 +106,7 @@ export default function RecentTicketsTable({ tickets }: RecentTicketsTableProps)
                       {ticket.id.slice(0, 8)}
                     </TableCell>
                     <TableCell className="text-xs font-medium max-w-[200px] truncate">
-                      {ticket.title}
+                      {getDisplayTicketTitle(ticket.title)}
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className={`text-[10px] ${priorityStyles[ticket.priority]}`}>

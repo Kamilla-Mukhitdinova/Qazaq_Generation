@@ -6,7 +6,6 @@ import { motion } from 'framer-motion';
 import {
   ArrowLeft,
   CheckCheck,
-  Image,
   FileText,
   Loader2,
   MessageSquare,
@@ -83,6 +82,12 @@ const getMemberUserId = (member: any) => member?.user_id || member?.userId;
 const getMessageType = (message: any) => message?.message_type || message?.messageType || 'text';
 const getFileName = (message: any) => message?.file_name || message?.fileName || message?.body || 'file';
 const getFileSize = (message: any) => message?.file_size || message?.fileSize;
+const normalizeText = (value?: string) => (value || '').trim().toLowerCase();
+const isLiyaProfile = (profile: any) => {
+  const name = normalizeText(profile?.name);
+  const email = normalizeText(profile?.email);
+  return name.includes('лия') || name.includes('liya') || email.includes('liya');
+};
 const formatFileSize = (bytes?: number) => {
   if (!bytes) return '';
   if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
@@ -102,8 +107,8 @@ export default function InternalChat() {
   const [userSearch, setUserSearch] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [chatBackground, setChatBackground] = useState(() => localStorage.getItem('qg-chat-background') || 'soft');
-  const [avatarDraft, setAvatarDraft] = useState(profile?.avatar_url || '');
   const [isRecording, setIsRecording] = useState(false);
+  const [startingDirectId, setStartingDirectId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -111,7 +116,7 @@ export default function InternalChat() {
   const recordingStartedAtRef = useRef<number>(0);
   const userId = user?.id;
 
-  const { data: profiles = [], refetch: refetchProfiles } = useQuery({
+  const { data: profiles = [] } = useQuery({
     queryKey: ['chat-profiles'],
     queryFn: () => api.getProfiles(),
   });
@@ -155,8 +160,17 @@ export default function InternalChat() {
   }, [messages, selectedRoom]);
 
   useEffect(() => {
-    setAvatarDraft(profile?.avatar_url || '');
-  }, [profile?.avatar_url]);
+    if (!profile?.user_id) return;
+    queryClient.setQueryData<any[]>(['chat-profiles'], (currentProfiles = []) => {
+      const normalizedProfile = {
+        ...profile,
+        userId: profile.user_id,
+        avatarUrl: profile.avatar_url,
+      };
+      const withoutOwnProfile = currentProfiles.filter((item: any) => getProfileUserId(item) !== profile.user_id);
+      return [normalizedProfile, ...withoutOwnProfile];
+    });
+  }, [profile, queryClient]);
 
   const getRoomDisplayName = (room: any) => {
     if (room.type === 'group' && room.name) return room.name;
@@ -186,9 +200,17 @@ export default function InternalChat() {
   });
 
   const quickPeople = profiles
-    .filter((p: any) => getProfileUserId(p) !== userId)
-    .filter((p: any) => !searchRooms.trim() || p.name.toLowerCase().includes(searchRooms.toLowerCase()))
-    .slice(0, searchRooms.trim() ? 8 : 5);
+    .filter((p: any) => getProfileUserId(p) && getProfileUserId(p) !== userId)
+    .filter((p: any) => {
+      const query = normalizeText(searchRooms);
+      if (!query) return true;
+      return `${p.name || ''} ${p.email || ''}`.toLowerCase().includes(query);
+    })
+    .sort((a: any, b: any) => {
+      if (isLiyaProfile(a) && !isLiyaProfile(b)) return -1;
+      if (!isLiyaProfile(a) && isLiyaProfile(b)) return 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
 
   const filteredProfiles = profiles.filter(
     (p: any) => getProfileUserId(p) !== userId && (!userSearch || p.name.toLowerCase().includes(userSearch.toLowerCase())),
@@ -241,18 +263,8 @@ export default function InternalChat() {
     onError: (err: any) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
   });
 
-  const saveAvatarMutation = useMutation({
-    mutationFn: async () => api.updateMyProfile({ avatarUrl: avatarDraft.trim() || null }),
-    onSuccess: () => {
-      refetchProfiles();
-      queryClient.invalidateQueries({ queryKey: ['chat-profiles'] });
-      toast({ title: t('common.success'), description: t('chat.avatarSaved') });
-    },
-    onError: (err: any) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
-  });
-
-  const startDirect = async (otherUserId: string) => {
-    if (!userId) return;
+  const startDirect = async (otherUserId?: string) => {
+    if (!userId || !otherUserId || startingDirectId) return;
     const existingRoom = rooms.find(
       (room: any) =>
         room.type === 'direct' &&
@@ -266,13 +278,16 @@ export default function InternalChat() {
       return;
     }
 
+    setStartingDirectId(otherUserId);
     try {
-      const room: any = await api.createChatRoom({ type: 'direct', memberIds: [userId, otherUserId] });
+      const room: any = await api.createChatRoom({ type: 'direct', memberIds: [otherUserId] });
       upsertRoomInCache(room);
       refetchRooms();
       setSelectedRoom(room.id);
     } catch (err: any) {
       toast({ title: t('common.error'), description: err.message, variant: 'destructive' });
+    } finally {
+      setStartingDirectId(null);
     }
   };
 
@@ -402,8 +417,37 @@ export default function InternalChat() {
 
           <ScrollArea className="flex-1">
             <div className="p-2">
+              <p className="px-3 pb-2 text-xs font-medium uppercase text-muted-foreground">{t('chat.people')}</p>
+              {quickPeople.length === 0 ? (
+                <div className="px-3 py-3 text-sm text-muted-foreground">{t('chat.noPeople')}</div>
+              ) : (
+                quickPeople.map((person: any) => (
+                  <button
+                    key={getProfileUserId(person)}
+                    onClick={() => startDirect(getProfileUserId(person))}
+                    disabled={!!startingDirectId}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Avatar className="h-9 w-9">
+                      <AvatarImage src={getAvatarUrl(person)} alt={person.name} />
+                      <AvatarFallback className="bg-blue-500/10 text-xs text-blue-600">{getInitials(person.name || '?')}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{person.name}</p>
+                      <p className="text-xs text-muted-foreground">{t('chat.direct')}</p>
+                    </div>
+                    {startingDirectId === getProfileUserId(person) && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
+                  </button>
+                ))
+              )}
+            </div>
+
+            <Separator className="mx-4 my-2" />
+
+            <div className="p-2">
+              <p className="px-3 pb-2 text-xs font-medium uppercase text-muted-foreground">{t('chat.chats')}</p>
               {filteredRooms.length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-muted-foreground">{t('chat.noChats')}</div>
+                <div className="px-4 py-6 text-center text-sm text-muted-foreground">{t('chat.noChats')}</div>
               ) : (
                 filteredRooms.map((room: any) => {
                   const active = selectedRoom === room.id;
@@ -437,28 +481,6 @@ export default function InternalChat() {
                   );
                 })
               )}
-            </div>
-
-            <Separator className="mx-4 my-2" />
-
-            <div className="p-2">
-              <p className="px-3 pb-2 text-xs font-medium uppercase text-muted-foreground">{t('chat.people')}</p>
-              {quickPeople.map((person: any) => (
-                <button
-                  key={getProfileUserId(person)}
-                  onClick={() => startDirect(getProfileUserId(person))}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-muted"
-                >
-                  <Avatar className="h-9 w-9">
-                    <AvatarImage src={getAvatarUrl(person)} alt={person.name} />
-                    <AvatarFallback className="bg-blue-500/10 text-xs text-blue-600">{getInitials(person.name)}</AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-foreground">{person.name}</p>
-                    <p className="text-xs text-muted-foreground">{t('chat.direct')}</p>
-                  </div>
-                </button>
-              ))}
             </div>
           </ScrollArea>
         </aside>
@@ -671,36 +693,9 @@ export default function InternalChat() {
                 ))}
               </div>
             </div>
-
-            <div className="space-y-3">
-              <Label className="flex items-center gap-2">
-                <Image className="h-4 w-4" />
-                {t('chat.avatarUrl')}
-              </Label>
-              <div className="flex items-center gap-3">
-                <Avatar className="h-14 w-14">
-                  <AvatarImage src={avatarDraft} alt={profile?.name || user?.email || 'User'} />
-                  <AvatarFallback className="bg-blue-500/10 text-blue-600">
-                    {getInitials(profile?.name || user?.email || 'U')}
-                  </AvatarFallback>
-                </Avatar>
-                <Input
-                  value={avatarDraft}
-                  onChange={(e) => setAvatarDraft(e.target.value)}
-                  placeholder="https://..."
-                  className="min-w-0"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">{t('chat.avatarHint')}</p>
-            </div>
-
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setSettingsOpen(false)}>
-                {t('common.cancel')}
-              </Button>
-              <Button onClick={() => saveAvatarMutation.mutate()} disabled={saveAvatarMutation.isPending}>
-                {saveAvatarMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {t('common.save')}
+                {t('common.close')}
               </Button>
             </div>
           </div>

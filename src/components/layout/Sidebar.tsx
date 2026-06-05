@@ -98,9 +98,9 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useState } from 'react';
 import type { PointerEvent } from 'react';
 
-const SIDEBAR_MIN_WIDTH = 280;
-const SIDEBAR_MAX_WIDTH = 420;
-const SIDEBAR_DEFAULT_WIDTH = 320;
+const SIDEBAR_MIN_WIDTH = 248;
+const SIDEBAR_MAX_WIDTH = 320;
+const SIDEBAR_DEFAULT_WIDTH = 280;
 
 interface SidebarProps {
   collapsed?: boolean;
@@ -174,6 +174,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
       items: [
         { icon: Ticket, labelKey: 'nav.tickets', href: '/tickets', roles: ['employee', 'agent', 'manager', 'admin'] },
         { icon: Plus, labelKey: 'nav.support.createTicket', href: '/tickets/new', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: ClipboardCheck, labelKey: 'nav.support.ppr', href: '/ppr', roles: ['employee', 'agent', 'manager', 'admin'] },
         { icon: TriangleAlert, labelKey: 'nav.support.problems', href: '/tickets?type=problems', roles: ['employee', 'agent', 'manager', 'admin'] },
         { icon: ClipboardList, labelKey: 'nav.support.changes', href: '/tickets?type=changes', roles: ['employee', 'agent', 'manager', 'admin'] },
         { icon: CalendarClock, labelKey: 'nav.support.planning', href: '/tickets?type=planning', roles: ['employee', 'agent', 'manager', 'admin'] },
@@ -192,7 +193,6 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
         { icon: Handshake, labelKey: 'nav.management.suppliers', href: '/assets?section=suppliers', roles: ['employee', 'agent', 'manager', 'admin'] },
         { icon: Contact, labelKey: 'nav.management.contacts', href: '/assets?section=contacts', roles: ['employee', 'agent', 'manager', 'admin'] },
         { icon: FileBadge, labelKey: 'nav.management.contracts', href: '/assets?section=contracts', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: FileText, labelKey: 'nav.management.documents', href: '/documents', roles: ['employee', 'agent', 'manager', 'admin'] },
         { icon: PhoneCall, labelKey: 'nav.management.phoneLines', href: '/assets?section=phone-lines', roles: ['employee', 'agent', 'manager', 'admin'] },
         { icon: BadgeCheck, labelKey: 'nav.management.certificates', href: '/assets?section=certificates', roles: ['employee', 'agent', 'manager', 'admin'] },
         { icon: Warehouse, labelKey: 'nav.management.dataCenters', href: '/assets?section=data-centers', roles: ['employee', 'agent', 'manager', 'admin'] },
@@ -213,6 +213,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
         { icon: BookOpen, labelKey: 'nav.tools.knowledgeBase', href: '/knowledge', roles: ['employee', 'agent', 'manager', 'admin'] },
         { icon: CalendarCheck, labelKey: 'nav.tools.bookings', href: '/assets?section=bookings', roles: ['employee', 'agent', 'manager', 'admin'] },
         { icon: ClipboardCheck, labelKey: 'nav.tools.reports', href: '/reports/manage', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: BadgeCheck, labelKey: 'nav.tools.performance', href: '/performance', roles: ['agent', 'manager', 'admin'] },
         { icon: Bookmark, labelKey: 'nav.tools.savedSearches', href: '/assets?section=saved-searches', roles: ['employee', 'agent', 'manager', 'admin'] },
         { icon: Map, labelKey: 'nav.tools.cartography', href: '/assets?section=cartography', roles: ['employee', 'agent', 'manager', 'admin'] },
         { icon: PieChart, labelKey: 'nav.tools.detailedReports', href: '/reports', roles: ['employee', 'agent', 'manager', 'admin'] },
@@ -225,20 +226,21 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
       labelKey: 'nav.administration',
       items: [
         { icon: UserRound, labelKey: 'nav.users', href: '/admin/users', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: UsersRound, labelKey: 'nav.administration.groups', href: '/admin/users?section=groups', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Layers, labelKey: 'nav.administration.organizations', href: '/admin/departments', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: BookOpen, labelKey: 'nav.administration.rules', href: '/admin/sla', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: NotebookTabs, labelKey: 'nav.administration.directories', href: '/admin/categories', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: UserCog, labelKey: 'nav.administration.profiles', href: '/admin/users?section=profiles', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: ListTodo, labelKey: 'nav.administration.notificationQueue', href: '/notifications?section=queue', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Logs, labelKey: 'nav.administration.logs', href: '/admin/users?section=logs', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: CloudDownload, labelKey: 'nav.administration.equipment', href: '/assets?section=equipment', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Settings2, labelKey: 'nav.administration.glpiInventory', href: '/assets?section=glpi-inventory', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: FilePenLine, labelKey: 'nav.administration.forms', href: '/admin/categories?section=forms', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: UsersRound, labelKey: 'nav.administration.groups', href: '/admin/groups', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Layers, labelKey: 'nav.administration.organizations', href: '/admin/organizations', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: BookOpen, labelKey: 'nav.administration.rules', href: '/admin/rules', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: NotebookTabs, labelKey: 'nav.administration.directories', href: '/admin/directories', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: UserCog, labelKey: 'nav.administration.profiles', href: '/admin/profiles', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: ListTodo, labelKey: 'nav.administration.notificationQueue', href: '/admin/notification-queue', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Logs, labelKey: 'nav.administration.logs', href: '/admin/logs', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: CloudDownload, labelKey: 'nav.administration.equipment', href: '/admin/equipment', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Settings2, labelKey: 'nav.administration.glpiInventory', href: '/admin/glpi-inventory', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: FilePenLine, labelKey: 'nav.administration.forms', href: '/admin/forms', roles: ['employee', 'agent', 'manager', 'admin'] },
       ],
       roles: ['employee', 'agent', 'manager', 'admin'],
     },
     { icon: MessagesSquare, labelKey: 'nav.messages', href: '/chat', roles: ['employee', 'agent', 'manager', 'admin'] },
+    { icon: FileText, labelKey: 'nav.management.documents', href: '/documents', roles: ['employee', 'agent', 'manager', 'admin'] },
     { icon: Video, labelKey: 'nav.videoConferences', href: '/meetings', roles: ['employee', 'agent', 'manager', 'admin'] },
     { icon: MessageSquare, labelKey: 'nav.aiChat', href: '/ai-chat', roles: ['employee', 'agent', 'manager', 'admin'] },
     { icon: BellRing, labelKey: 'nav.notifications', href: '/notifications', roles: ['employee', 'agent', 'manager', 'admin'] },
@@ -246,18 +248,8 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
       icon: Settings,
       labelKey: 'nav.settings',
       items: [
-        { icon: PenLine, labelKey: 'nav.settings.dropdowns', href: '/settings/dropdowns', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Component, labelKey: 'nav.settings.components', href: '/settings/components', roles: ['employee', 'agent', 'manager', 'admin'] },
         { icon: BellRing, labelKey: 'nav.settings.notifications', href: '/settings/notifications', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: ClipboardCheck, labelKey: 'nav.settings.serviceLevels', href: '/admin/sla', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: SlidersHorizontal, labelKey: 'nav.settings.general', href: '/settings/general', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Fingerprint, labelKey: 'nav.settings.uniqueField', href: '/settings/unique-field', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Workflow, labelKey: 'nav.settings.automaticActions', href: '/settings/automatic-actions', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: LogIn, labelKey: 'nav.settings.authentication', href: '/settings/2fa', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Inbox, labelKey: 'nav.settings.receivers', href: '/settings/receivers', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: LinkIcon, labelKey: 'nav.settings.externalLinks', href: '/settings/external-links', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Puzzle, labelKey: 'nav.settings.plugins', href: '/settings/plugins', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Car, labelKey: 'nav.settings.objectManagement', href: '/settings/object-management', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: LogIn, labelKey: 'nav.settings.authentication', href: '/settings/authentication', roles: ['employee', 'agent', 'manager', 'admin'] },
       ],
       roles: ['employee', 'agent', 'manager', 'admin'],
     },
@@ -431,7 +423,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
       animate={{ x: 0, opacity: 1 }}
       style={!collapsed && isResizable ? { width: sidebarWidth } : undefined}
       className={cn(
-        'relative flex flex-col h-full border-r border-sidebar-border/70 bg-[linear-gradient(180deg,hsl(var(--sidebar-background))_0%,hsl(var(--sidebar-accent)/0.42)_48%,hsl(var(--sidebar-background))_100%)] shadow-[8px_0_24px_rgba(15,23,42,0.04)] backdrop-blur-xl transition-all duration-300',
+        'relative flex h-full flex-col border-r border-sidebar-border/70 bg-sidebar shadow-[8px_0_24px_rgba(15,23,42,0.04)] transition-all duration-300',
         collapsed ? 'w-[84px]' : isResizable ? 'shrink-0' : 'w-64'
       )}
     >
@@ -474,7 +466,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
       <Separator className="bg-sidebar-border" />
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 px-3 py-4">
+      <ScrollArea className="min-h-0 flex-1 px-3 py-4">
         <nav className="space-y-1">
           {navStructure.filter(item => isItemVisible(item)).map((item, index) => {
             if ('items' in item) {
@@ -486,10 +478,10 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
         </nav>
       </ScrollArea>
 
-      <Separator className="bg-sidebar-border" />
+      <Separator className="shrink-0 bg-sidebar-border" />
 
       {/* User section */}
-      <div className={cn('p-4', collapsed && 'px-2')}>
+      <div className={cn('shrink-0 bg-sidebar/95 p-4', collapsed && 'px-2')}>
         <motion.div 
           className={cn(
             'flex items-center gap-3 mb-3 p-2 rounded-lg cursor-pointer hover:bg-sidebar-accent/30 transition-colors',

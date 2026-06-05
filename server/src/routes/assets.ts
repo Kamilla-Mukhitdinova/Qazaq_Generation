@@ -1,17 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../db/index.js';
-import { assets, profiles, userRoles } from '../db/schema.js';
+import { assets, profiles } from '../db/schema.js';
 import { eq, and, or, ilike, sql, desc, asc, inArray } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth.js';
 
 const router = Router();
 router.use(authMiddleware);
 
-// Helper: check if user is admin or manager
-async function isAdminOrManager(userId: string): Promise<boolean> {
-  const roles = await db.select().from(userRoles)
-    .where(and(eq(userRoles.userId, userId), or(eq(userRoles.role, 'admin'), eq(userRoles.role, 'manager'))));
-  return roles.length > 0;
+function canManageAssets(role?: string) {
+  return role === 'admin' || role === 'manager';
 }
 
 // GET / - list assets with filters, search, pagination
@@ -80,7 +77,8 @@ router.get('/', async (req: Request, res: Response) => {
 // GET /:id - single asset
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const [asset] = await db.select().from(assets).where(eq(assets.id, req.params.id));
+    const assetId = String(req.params.id);
+    const [asset] = await db.select().from(assets).where(eq(assets.id, assetId));
     if (!asset) return res.status(404).json({ error: 'Asset not found' });
 
     let assigneeName = null;
@@ -100,8 +98,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST / - create asset (admin/manager only)
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
-    if (!(await isAdminOrManager(userId))) {
+    if (!canManageAssets(req.user?.role)) {
       return res.status(403).json({ error: 'Only admin/manager can create assets' });
     }
 
@@ -140,12 +137,12 @@ router.post('/', async (req: Request, res: Response) => {
 // PATCH /:id - update asset (admin/manager only)
 router.patch('/:id', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
-    if (!(await isAdminOrManager(userId))) {
+    const assetId = String(req.params.id);
+    if (!canManageAssets(req.user?.role)) {
       return res.status(403).json({ error: 'Only admin/manager can update assets' });
     }
 
-    const [existing] = await db.select().from(assets).where(eq(assets.id, req.params.id));
+    const [existing] = await db.select().from(assets).where(eq(assets.id, assetId));
     if (!existing) return res.status(404).json({ error: 'Asset not found' });
 
     const updates: any = { updatedAt: new Date() };
@@ -168,7 +165,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
     }
 
     const [updated] = await db.update(assets).set(updates)
-      .where(eq(assets.id, req.params.id)).returning();
+      .where(eq(assets.id, assetId)).returning();
 
     res.json(updated);
   } catch (err: any) {
@@ -180,15 +177,15 @@ router.patch('/:id', async (req: Request, res: Response) => {
 // DELETE /:id - delete asset (admin/manager only)
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
-    if (!(await isAdminOrManager(userId))) {
+    const assetId = String(req.params.id);
+    if (!canManageAssets(req.user?.role)) {
       return res.status(403).json({ error: 'Only admin/manager can delete assets' });
     }
 
-    const [existing] = await db.select().from(assets).where(eq(assets.id, req.params.id));
+    const [existing] = await db.select().from(assets).where(eq(assets.id, assetId));
     if (!existing) return res.status(404).json({ error: 'Asset not found' });
 
-    await db.delete(assets).where(eq(assets.id, req.params.id));
+    await db.delete(assets).where(eq(assets.id, assetId));
     res.json({ success: true });
   } catch (err: any) {
     console.error('DELETE /assets/:id error:', err);

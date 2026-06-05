@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
@@ -10,12 +11,45 @@ import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Camera, User, Mail, Building2, Shield, Loader2, Ticket, Clock, TrendingUp, Upload, X, BellRing } from 'lucide-react';
+import { User, Mail, Building2, Shield, Loader2, Ticket, Clock, TrendingUp, Upload, X, BellRing } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 
+const imageFileToAvatarDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+  if (!file.type.startsWith('image/')) {
+    reject(new Error('invalid-image'));
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onerror = () => reject(new Error('read-failed'));
+  reader.onload = () => {
+    const image = new window.Image();
+    image.onerror = () => reject(new Error('image-load-failed'));
+    image.onload = () => {
+      const size = 320;
+      const scale = Math.max(size / image.width, size / image.height);
+      const width = Math.round(image.width * scale);
+      const height = Math.round(image.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        reject(new Error('canvas-failed'));
+        return;
+      }
+
+      context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    image.src = String(reader.result || '');
+  };
+  reader.readAsDataURL(file);
+});
+
 export default function Profile() {
-  const { user, profile, role } = useAuth();
+  const { user, profile, role, refreshProfile } = useAuth();
   const { t } = useLanguage();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -25,17 +59,35 @@ export default function Profile() {
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || '');
   const push = usePushNotifications();
 
+  useEffect(() => {
+    setName(profile?.name || '');
+    setAvatarUrl(profile?.avatar_url || '');
+  }, [profile]);
+
   const handleSave = async () => {
     if (!user) return;
     setIsSaving(true);
     try {
-      await api.updateMyProfile({ name });
+      await api.updateMyProfile({ name, avatarUrl: avatarUrl || null });
+      await refreshProfile();
       toast({ title: t('common.success'), description: t('profile.updateSuccess') });
     } catch (error: any) {
       console.error('Error saving profile:', error);
       toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleAvatarFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    try {
+      setAvatarUrl(await imageFileToAvatarDataUrl(file));
+    } catch {
+      toast({ title: t('common.error'), description: t('profile.avatarUploadError'), variant: 'destructive' });
     }
   };
 
@@ -69,6 +121,19 @@ export default function Profile() {
                   </AvatarFallback>
                 </Avatar>
               </motion.div>
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarFileSelect} className="hidden" />
+              <div className="grid w-full gap-2">
+                <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="h-4 w-4" />
+                  {t('profile.uploadPhoto')}
+                </Button>
+                {avatarUrl && (
+                  <Button type="button" variant="ghost" onClick={() => setAvatarUrl('')}>
+                    <X className="h-4 w-4" />
+                    {t('profile.removePhoto')}
+                  </Button>
+                )}
+              </div>
               <Badge variant="secondary" className="bg-primary/10 text-primary">
                 <Shield className="h-3 w-3 mr-1" />{getRoleLabel(role || 'employee')}
               </Badge>

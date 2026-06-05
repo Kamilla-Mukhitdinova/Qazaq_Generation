@@ -11,17 +11,27 @@ interface FiltersState {
   department: string;
 }
 
+interface DashboardFilterOptions {
+  dateRange: string[];
+  priority: string[];
+  status: string[];
+  assignee: string[];
+  department: string[];
+}
+
 interface DashboardFiltersProps {
   filters: FiltersState;
   onFilterChange: (key: keyof FiltersState, value: string) => void;
   onReset: () => void;
   departments: { id: string; name: string }[];
   agents: { id: string; name: string }[];
+  filterOptions: DashboardFilterOptions;
 }
 
-export default function DashboardFilters({ filters, onFilterChange, onReset, departments, agents }: DashboardFiltersProps) {
+export default function DashboardFilters({ filters, onFilterChange, onReset, departments, agents, filterOptions }: DashboardFiltersProps) {
   const { t } = useLanguage();
   const hasFilters = Object.values(filters).some(v => v && v !== 'all');
+  const hasOption = (key: keyof DashboardFilterOptions, value: string) => filterOptions[key].includes(value);
 
   return (
     <div className="flex flex-wrap items-center gap-3 p-4 rounded-xl border bg-card">
@@ -36,9 +46,9 @@ export default function DashboardFilters({ filters, onFilterChange, onReset, dep
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">{t('dashboard.filter.allTime')}</SelectItem>
-          <SelectItem value="today">{t('dashboard.filter.today')}</SelectItem>
-          <SelectItem value="week">{t('dashboard.filter.week')}</SelectItem>
-          <SelectItem value="month">{t('dashboard.filter.month')}</SelectItem>
+          <SelectItem value="today" disabled={!hasOption('dateRange', 'today')}>{t('dashboard.filter.today')}</SelectItem>
+          <SelectItem value="week" disabled={!hasOption('dateRange', 'week')}>{t('dashboard.filter.week')}</SelectItem>
+          <SelectItem value="month" disabled={!hasOption('dateRange', 'month')}>{t('dashboard.filter.month')}</SelectItem>
         </SelectContent>
       </Select>
 
@@ -48,10 +58,10 @@ export default function DashboardFilters({ filters, onFilterChange, onReset, dep
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">{t('ticket.list.allPriorities')}</SelectItem>
-          <SelectItem value="critical">{t('ticket.priority.critical')}</SelectItem>
-          <SelectItem value="high">{t('ticket.priority.high')}</SelectItem>
-          <SelectItem value="medium">{t('ticket.priority.medium')}</SelectItem>
-          <SelectItem value="low">{t('ticket.priority.low')}</SelectItem>
+          <SelectItem value="critical" disabled={!hasOption('priority', 'critical')}>{t('ticket.priority.critical')}</SelectItem>
+          <SelectItem value="high" disabled={!hasOption('priority', 'high')}>{t('ticket.priority.high')}</SelectItem>
+          <SelectItem value="medium" disabled={!hasOption('priority', 'medium')}>{t('ticket.priority.medium')}</SelectItem>
+          <SelectItem value="low" disabled={!hasOption('priority', 'low')}>{t('ticket.priority.low')}</SelectItem>
         </SelectContent>
       </Select>
 
@@ -61,11 +71,11 @@ export default function DashboardFilters({ filters, onFilterChange, onReset, dep
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">{t('ticket.list.allStatuses')}</SelectItem>
-          <SelectItem value="new">{t('ticket.status.new')}</SelectItem>
-          <SelectItem value="assigned">{t('ticket.status.assigned')}</SelectItem>
-          <SelectItem value="in_progress">{t('ticket.status.inProgress')}</SelectItem>
-          <SelectItem value="resolved">{t('ticket.status.resolved')}</SelectItem>
-          <SelectItem value="closed">{t('ticket.status.closed')}</SelectItem>
+          <SelectItem value="new" disabled={!hasOption('status', 'new')}>{t('ticket.status.new')}</SelectItem>
+          <SelectItem value="assigned" disabled={!hasOption('status', 'assigned')}>{t('ticket.status.assigned')}</SelectItem>
+          <SelectItem value="in_progress" disabled={!hasOption('status', 'in_progress')}>{t('ticket.status.inProgress')}</SelectItem>
+          <SelectItem value="resolved" disabled={!hasOption('status', 'resolved')}>{t('ticket.status.resolved')}</SelectItem>
+          <SelectItem value="closed" disabled={!hasOption('status', 'closed')}>{t('ticket.status.closed')}</SelectItem>
         </SelectContent>
       </Select>
 
@@ -76,7 +86,7 @@ export default function DashboardFilters({ filters, onFilterChange, onReset, dep
         <SelectContent>
           <SelectItem value="all">{t('dashboard.filter.allDepartments')}</SelectItem>
           {departments.map(d => (
-            <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+            <SelectItem key={d.id} value={d.id} disabled={!hasOption('department', d.id)}>{d.name}</SelectItem>
           ))}
         </SelectContent>
       </Select>
@@ -88,7 +98,7 @@ export default function DashboardFilters({ filters, onFilterChange, onReset, dep
         <SelectContent>
           <SelectItem value="all">{t('common.all')}</SelectItem>
           {agents.map(a => (
-            <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+            <SelectItem key={a.id} value={a.id} disabled={!hasOption('assignee', a.id)}>{a.name}</SelectItem>
           ))}
         </SelectContent>
       </Select>

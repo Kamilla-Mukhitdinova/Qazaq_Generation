@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { db } from '../db/index.js';
-import { tickets, ticketComments, ticketHistory, ticketSla, ticketAttachments, profiles, slaPolicies, users } from '../db/schema.js';
+import { tickets, ticketComments, ticketHistory, ticketSla, ticketAttachments, ticketKbLinks, profiles, slaPolicies, users } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { notifyUser, notifyUsers } from '../services/notificationService.js';
 
@@ -24,6 +24,34 @@ const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
 
 const router = Router();
 router.use(authMiddleware);
+
+const deleteTicketWithRelations = async (ticketId: string) => {
+  const [ticket] = await db.select().from(tickets).where(eq(tickets.id, ticketId)).limit(1);
+  if (!ticket) return false;
+
+  const attachments = await db.select().from(ticketAttachments)
+    .where(eq(ticketAttachments.ticketId, ticketId));
+
+  for (const attachment of attachments) {
+    const filePath = path.join(UPLOADS_DIR, attachment.filePath);
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (fileErr) {
+        console.error('Ticket attachment delete error (non-fatal):', fileErr);
+      }
+    }
+  }
+
+  await db.delete(ticketKbLinks).where(eq(ticketKbLinks.ticketId, ticketId));
+  await db.delete(ticketAttachments).where(eq(ticketAttachments.ticketId, ticketId));
+  await db.delete(ticketComments).where(eq(ticketComments.ticketId, ticketId));
+  await db.delete(ticketHistory).where(eq(ticketHistory.ticketId, ticketId));
+  await db.delete(ticketSla).where(eq(ticketSla.ticketId, ticketId));
+  await db.delete(tickets).where(eq(tickets.id, ticketId));
+
+  return true;
+};
 
 // List tickets
 router.get('/', async (req, res) => {
@@ -62,7 +90,8 @@ router.get('/', async (req, res) => {
 // Get single ticket
 router.get('/:id', async (req, res) => {
   try {
-    const [ticket] = await db.select().from(tickets).where(eq(tickets.id, req.params.id)).limit(1);
+    const ticketId = String(req.params.id);
+    const [ticket] = await db.select().from(tickets).where(eq(tickets.id, ticketId)).limit(1);
     if (!ticket) return res.status(404).json({ error: 'Тикет табылмады' });
 
     const comments = await db.select().from(ticketComments).where(eq(ticketComments.ticketId, ticket.id)).orderBy(desc(ticketComments.createdAt));
@@ -156,10 +185,11 @@ router.post('/', async (req, res) => {
 // Update ticket
 router.patch('/:id', requireRole('agent', 'admin', 'manager'), async (req, res) => {
   try {
+    const ticketId = String(req.params.id);
     const { status, priority, assigneeId, groupId, categoryId } = req.body;
 
     // Fetch current ticket for audit trail
-    const [current] = await db.select().from(tickets).where(eq(tickets.id, req.params.id)).limit(1);
+    const [current] = await db.select().from(tickets).where(eq(tickets.id, ticketId)).limit(1);
     if (!current) return res.status(404).json({ error: 'Тикет табылмады' });
 
     const updateData: any = { updatedAt: new Date() };
@@ -190,17 +220,17 @@ router.patch('/:id', requireRole('agent', 'admin', 'manager'), async (req, res) 
     // Mark SLA responded_at on first agent action
     if (changes.length > 0) {
       try {
-        const [sla] = await db.select().from(ticketSla).where(eq(ticketSla.ticketId, req.params.id)).limit(1);
+        const [sla] = await db.select().from(ticketSla).where(eq(ticketSla.ticketId, ticketId)).limit(1);
         if (sla && !sla.respondedAt) {
           const now = new Date();
           const slaUpdate: any = { respondedAt: now };
           if (sla.responseDue && now > new Date(sla.responseDue)) slaUpdate.breachedResponse = true;
-          await db.update(ticketSla).set(slaUpdate).where(eq(ticketSla.ticketId, req.params.id));
+          await db.update(ticketSla).set(slaUpdate).where(eq(ticketSla.ticketId, ticketId));
         }
         if (sla && status === 'resolved' && sla.resolveDue) {
           const now = new Date();
           if (now > new Date(sla.resolveDue)) {
-            await db.update(ticketSla).set({ breachedResolve: true }).where(eq(ticketSla.ticketId, req.params.id));
+            await db.update(ticketSla).set({ breachedResolve: true }).where(eq(ticketSla.ticketId, ticketId));
           }
         }
       } catch (slaErr) {
@@ -209,13 +239,13 @@ router.patch('/:id', requireRole('agent', 'admin', 'manager'), async (req, res) 
     }
 
     const [updated] = await db.update(tickets).set(updateData)
-      .where(eq(tickets.id, req.params.id)).returning();
+      .where(eq(tickets.id, ticketId)).returning();
 
     // Write audit trail
     if (changes.length > 0) {
       await db.insert(ticketHistory).values(
         changes.map(c => ({
-          ticketId: req.params.id,
+          ticketId,
           actorId: req.user!.userId,
           field: c.field,
           oldValue: c.oldValue,
@@ -257,7 +287,7 @@ router.patch('/:id', requireRole('agent', 'admin', 'manager'), async (req, res) 
     // SLA breach → notify assignee + requester
     if (changes.length > 0) {
       try {
-        const [slaAfter] = await db.select().from(ticketSla).where(eq(ticketSla.ticketId, req.params.id)).limit(1);
+        const [slaAfter] = await db.select().from(ticketSla).where(eq(ticketSla.ticketId, ticketId)).limit(1);
         if (slaAfter?.breachedResponse || slaAfter?.breachedResolve) {
           const targets = [current.requesterId, current.assigneeId].filter(Boolean) as string[];
           const breachType = slaAfter.breachedResponse ? 'жауап беру' : 'шешу';
@@ -278,12 +308,50 @@ router.patch('/:id', requireRole('agent', 'admin', 'manager'), async (req, res) 
   }
 });
 
+// Bulk delete tickets
+router.delete('/', requireRole('admin', 'manager'), async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids.filter((id: unknown): id is string => typeof id === 'string' && id.trim().length > 0)
+      : [];
+
+    if (ids.length === 0) {
+      return res.status(400).json({ error: 'Не выбраны заявки для удаления' });
+    }
+
+    let deleted = 0;
+    for (const id of ids) {
+      if (await deleteTicketWithRelations(id)) deleted += 1;
+    }
+
+    return res.json({ success: true, deleted });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Серверде қате' });
+  }
+});
+
+// Delete ticket
+router.delete('/:id', requireRole('admin', 'manager'), async (req, res) => {
+  try {
+    const ticketId = String(req.params.id);
+    const deleted = await deleteTicketWithRelations(ticketId);
+    if (!deleted) return res.status(404).json({ error: 'Тикет табылмады' });
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Серверде қате' });
+  }
+});
+
 // Add comment
 router.post('/:id/comments', async (req, res) => {
   try {
+    const ticketId = String(req.params.id);
     const { body, isInternal } = req.body;
     const [comment] = await db.insert(ticketComments).values({
-      ticketId: req.params.id,
+      ticketId,
       authorId: req.user!.userId,
       body,
       isInternal: isInternal || false,
@@ -292,7 +360,7 @@ router.post('/:id/comments', async (req, res) => {
     // Notify relevant users about the new comment
     if (!isInternal) {
       try {
-        const [ticket] = await db.select().from(tickets).where(eq(tickets.id, req.params.id)).limit(1);
+        const [ticket] = await db.select().from(tickets).where(eq(tickets.id, ticketId)).limit(1);
         if (ticket) {
           const targets = [ticket.requesterId, ticket.assigneeId]
             .filter(Boolean)
@@ -315,13 +383,28 @@ router.post('/:id/comments', async (req, res) => {
   }
 });
 
+// List comments
+router.get('/:id/comments', async (req, res) => {
+  try {
+    const ticketId = String(req.params.id);
+    const rows = await db.select().from(ticketComments)
+      .where(eq(ticketComments.ticketId, ticketId))
+      .orderBy(desc(ticketComments.createdAt));
+    return res.json(rows);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Серверде қате' });
+  }
+});
+
 // Upload attachment
 router.post('/:id/attachments', upload.single('file'), async (req, res) => {
   try {
+    const ticketId = String(req.params.id);
     if (!req.file) return res.status(400).json({ error: 'Файл жүктелмеді' });
 
     const [attachment] = await db.insert(ticketAttachments).values({
-      ticketId: req.params.id,
+      ticketId,
       uploadedBy: req.user!.userId,
       filePath: req.file.filename,
       filename: req.file.originalname,
@@ -339,8 +422,9 @@ router.post('/:id/attachments', upload.single('file'), async (req, res) => {
 // List attachments
 router.get('/:id/attachments', async (req, res) => {
   try {
+    const ticketId = String(req.params.id);
     const rows = await db.select().from(ticketAttachments)
-      .where(eq(ticketAttachments.ticketId, req.params.id))
+      .where(eq(ticketAttachments.ticketId, ticketId))
       .orderBy(desc(ticketAttachments.createdAt));
     return res.json(rows);
   } catch (err) {
@@ -352,8 +436,9 @@ router.get('/:id/attachments', async (req, res) => {
 // Download attachment
 router.get('/:id/attachments/:attachmentId/download', async (req, res) => {
   try {
+    const attachmentId = String(req.params.attachmentId);
     const [att] = await db.select().from(ticketAttachments)
-      .where(eq(ticketAttachments.id, req.params.attachmentId)).limit(1);
+      .where(eq(ticketAttachments.id, attachmentId)).limit(1);
     if (!att) return res.status(404).json({ error: 'Файл табылмады' });
 
     const filePath = path.join(UPLOADS_DIR, att.filePath);
@@ -371,8 +456,9 @@ router.get('/:id/attachments/:attachmentId/download', async (req, res) => {
 // Delete attachment
 router.delete('/:id/attachments/:attachmentId', async (req, res) => {
   try {
+    const attachmentId = String(req.params.attachmentId);
     const [att] = await db.select().from(ticketAttachments)
-      .where(eq(ticketAttachments.id, req.params.attachmentId)).limit(1);
+      .where(eq(ticketAttachments.id, attachmentId)).limit(1);
     if (!att) return res.status(404).json({ error: 'Файл табылмады' });
 
     // Only uploader or admin/manager can delete
@@ -383,7 +469,7 @@ router.delete('/:id/attachments/:attachmentId', async (req, res) => {
     const filePath = path.join(UPLOADS_DIR, att.filePath);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
-    await db.delete(ticketAttachments).where(eq(ticketAttachments.id, req.params.attachmentId));
+    await db.delete(ticketAttachments).where(eq(ticketAttachments.id, attachmentId));
     return res.json({ success: true });
   } catch (err) {
     console.error(err);

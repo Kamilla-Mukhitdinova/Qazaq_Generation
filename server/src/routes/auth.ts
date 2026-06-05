@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import type { SignOptions } from 'jsonwebtoken';
 import { createHash, randomBytes } from 'crypto';
 import * as OTPAuth from 'otpauth';
 import * as QRCode from 'qrcode';
@@ -45,8 +46,9 @@ function hashResetToken(token: string) {
 }
 
 function signToken(userId: string, email: string, role: string) {
+  const expiresIn = (process.env.JWT_EXPIRES_IN || '7d') as SignOptions['expiresIn'];
   return jwt.sign({ userId, email, role }, process.env.JWT_SECRET!, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    expiresIn,
   });
 }
 

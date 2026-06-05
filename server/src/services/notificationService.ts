@@ -37,7 +37,9 @@ export type NotificationType =
   | 'ticket_status_changed'
   | 'ticket_assigned'
   | 'ticket_comment'
-  | 'sla_breach';
+  | 'sla_breach'
+  | 'meeting_invite'
+  | 'ppr_signer_added';
 
 interface NotifyOptions {
   userId: string;
@@ -53,6 +55,8 @@ const typeToPreferenceKey: Record<NotificationType, string> = {
   ticket_assigned: 'assignment',
   ticket_comment: 'comment',
   sla_breach: 'slaBreach',
+  meeting_invite: 'assignment',
+  ppr_signer_added: 'assignment',
 };
 
 // --- Get user channel preferences ---
@@ -152,6 +156,9 @@ function buildEmailHtml(title: string, message: string, payload?: Record<string,
   const ticketLink = payload?.ticketId
     ? `<p style="margin-top:16px"><a href="${process.env.FRONTEND_URL || 'http://localhost:8080'}/tickets/${payload.ticketId}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none">Тикетті ашу</a></p>`
     : '';
+  const meetingLink = payload?.meetingLink
+    ? `<p style="margin-top:16px"><a href="${payload.meetingLink}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none">Подключиться к конференции</a></p>`
+    : '';
 
   return `
 <!DOCTYPE html>
@@ -161,6 +168,7 @@ function buildEmailHtml(title: string, message: string, payload?: Record<string,
     <h2 style="margin:0 0 12px;color:#18181b;font-size:18px">${title}</h2>
     <p style="margin:0;color:#52525b;font-size:14px;line-height:1.6">${message}</p>
     ${ticketLink}
+    ${meetingLink}
     <hr style="border:none;border-top:1px solid #e4e4e7;margin:20px 0">
     <p style="margin:0;color:#a1a1aa;font-size:12px">Qazaq Generation IT Service Desk</p>
   </div>

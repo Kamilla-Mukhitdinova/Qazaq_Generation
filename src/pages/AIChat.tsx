@@ -124,8 +124,10 @@ export default function AIChat() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
-    streamChat(input.trim());
+    const text = input.trim();
     setInput('');
+    if (looksLikeAgentCommand(text)) runAgentCommand(text);
+    else streamChat(text);
   };
 
   const quickPrompts: Record<string, { icon: typeof FileText; label: string; prompt: string }[]> = {
@@ -147,6 +149,44 @@ export default function AIChat() {
   };
 
   const currentPrompts = quickPrompts[language] || quickPrompts.kk;
+
+  const looksLikeAgentCommand = (text: string) => {
+    const value = text.toLowerCase();
+    return [
+      'создай тикет',
+      'создать тикет',
+      'создай заявку',
+      'создать заявку',
+      'поменяй статус',
+      'измени статус',
+      'закрой тикет',
+      'назначь тикет',
+      'назначить тикет',
+      'assign ticket',
+      'create ticket',
+      'change status',
+    ].some((pattern) => value.includes(pattern));
+  };
+
+  const runAgentCommand = async (userMessage: string) => {
+    const userMsg: Message = { role: 'user', content: userMessage };
+    setMessages(prev => [...prev, userMsg]);
+    setIsLoading(true);
+
+    try {
+      const result = await api.runAIAgent(userMessage, { language });
+      const ticketId = result.ticket?.id;
+      const content = [
+        result.message || 'Готово.',
+        ticketId ? `\n\nТикет: [${ticketId.slice(0, 8)}](/tickets/${ticketId})` : '',
+      ].join('');
+      setMessages(prev => [...prev, { role: 'assistant', content }]);
+    } catch (error: any) {
+      setMessages(prev => [...prev, { role: 'assistant', content: `${t('common.error')}: ${error.message || ''}` }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const chatTypeLabels: Record<string, Record<string, string>> = {
     general: { kk: 'Жалпы', ru: 'Общий', en: 'General' },

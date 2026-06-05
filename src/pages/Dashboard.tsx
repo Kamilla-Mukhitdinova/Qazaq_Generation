@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
@@ -15,6 +15,7 @@ import TeamWorkload from '@/components/dashboard/TeamWorkload';
 import QuickActions from '@/components/dashboard/QuickActions';
 import RecentTicketsTable from '@/components/dashboard/RecentTicketsTable';
 import RecentActivity from '@/components/dashboard/RecentActivity';
+import EmployeeKpiSummary from '@/components/dashboard/EmployeeKpiSummary';
 
 const containerVariants: Variants = {
   hidden: { opacity: 0 },
@@ -35,6 +36,28 @@ interface FiltersState {
 }
 
 const defaultFilters: FiltersState = { dateRange: 'all', priority: 'all', status: 'all', assignee: 'all', department: 'all' };
+const dateRangeOptions = ['all', 'today', 'week', 'month'] as const;
+const priorityOptions = ['all', 'critical', 'high', 'medium', 'low'] as const;
+const statusOptions = ['all', 'new', 'assigned', 'in_progress', 'resolved', 'closed'] as const;
+
+interface DashboardFilterOptions {
+  dateRange: string[];
+  priority: string[];
+  status: string[];
+  assignee: string[];
+  department: string[];
+}
+
+interface DashboardRawData {
+  tickets: any[];
+  slaData: any[];
+  profiles: any[];
+  groups: any[];
+  historyData: any[];
+  agentUsers: any[];
+  agentRoles: any[];
+  performanceRows: any[];
+}
 
 const pick = <T,>(obj: any, ...keys: string[]): T | undefined => {
   for (const key of keys) {
@@ -59,22 +82,63 @@ export default function Dashboard() {
   const [recentTickets, setRecentTickets] = useState<any[]>([]);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [employeeKpiRows, setEmployeeKpiRows] = useState<any[]>([]);
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [rawData, setRawData] = useState<DashboardRawData | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
   }, []);
 
+  useEffect(() => {
+    if (!rawData) return;
+    applyDashboardFilters(rawData);
+  }, [filters, rawData, departments]);
+
+  const filterOptions = useMemo<DashboardFilterOptions>(() => {
+    if (!rawData) {
+      return {
+        dateRange: [...dateRangeOptions],
+        priority: [...priorityOptions],
+        status: [...statusOptions],
+        assignee: ['all'],
+        department: ['all'],
+      };
+    }
+
+    return getAvailableFilterOptions(rawData);
+  }, [filters, rawData]);
+
+  useEffect(() => {
+    if (!rawData) return;
+
+    const nextFilters = { ...filters };
+    let changed = false;
+
+    (Object.keys(filterOptions) as Array<keyof FiltersState>).forEach((key) => {
+      if (nextFilters[key] !== 'all' && !filterOptions[key].includes(nextFilters[key])) {
+        nextFilters[key] = 'all';
+        changed = true;
+      }
+    });
+
+    if (changed) setFilters(nextFilters);
+  }, [filterOptions, filters, rawData]);
+
   const fetchDashboardData = async () => {
     try {
-      const [ticketsRes, slaData, profiles, historyData, deptsData, rolesData] = await Promise.all([
-        api.getTickets(),
+      setLoading(true);
+      const periodMonth = new Date().toISOString().slice(0, 7);
+      const [ticketsRes, slaData, profiles, historyData, deptsData, groupsData, rolesData, performanceData] = await Promise.all([
+        api.getTickets({ limit: '1000' }),
         api.getTicketSla(),
         api.getProfiles(),
         api.getTicketHistory(),
         api.getDepartments(),
+        api.getGroups(),
         api.getUserRoles(),
+        ['admin', 'manager', 'agent'].includes(role || '') ? api.getPerformanceKpi(periodMonth).catch(() => ({ rows: [] })) : Promise.resolve({ rows: [] }),
       ]);
 
       const tickets = (ticketsRes.data || []).map((ticket: any) => ({
@@ -83,15 +147,14 @@ export default function Dashboard() {
         assignee_id: pick<string | null>(ticket, 'assignee_id', 'assigneeId') || null,
         created_at: pick<string>(ticket, 'created_at', 'createdAt') || new Date().toISOString(),
       }));
-      const breachedTicketIds = new Set((slaData || [])
-        .filter((s: any) => pick<boolean>(s, 'breached_response', 'breachedResponse') || pick<boolean>(s, 'breached_resolve', 'breachedResolve'))
-        .map((s: any) => pick<string>(s, 'ticket_id', 'ticketId')));
 
       // Departments & agents
       setDepartments(deptsData || []);
       const normalizedProfiles = (profiles || []).map((profile: any) => ({
         ...profile,
         user_id: pick<string>(profile, 'user_id', 'userId') || '',
+        department_id: pick<string | null>(profile, 'department_id', 'departmentId') || null,
+        group_id: pick<string | null>(profile, 'group_id', 'groupId') || null,
       }));
       const normalizedRoles = (rolesData || []).map((userRole: any) => ({
         ...userRole,
@@ -100,6 +163,119 @@ export default function Dashboard() {
       const agentRoles = normalizedRoles.filter((r: any) => ['agent', 'admin', 'manager'].includes(r.role));
       const agentUsers = normalizedProfiles.filter((p: any) => agentRoles.some((r: any) => r.user_id === p.user_id));
       setAgents(agentUsers.map((a: any) => ({ id: a.user_id, name: a.name })));
+      setRawData({
+        tickets,
+        slaData: slaData || [],
+        profiles: normalizedProfiles,
+        groups: groupsData || [],
+        historyData: historyData || [],
+        agentUsers,
+        agentRoles,
+        performanceRows: performanceData.rows || [],
+      });
+    } catch (error) {
+      console.error('Dashboard data fetch error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filterTickets = (tickets: any[], profileMap: Map<string, any>) => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = subDays(startOfToday, 6);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    return tickets.filter((ticket: any) => {
+      if (filters.priority !== 'all' && ticket.priority !== filters.priority) return false;
+      if (filters.status !== 'all' && ticket.status !== filters.status) return false;
+      if (filters.assignee !== 'all' && ticket.assignee_id !== filters.assignee) return false;
+
+      if (filters.dateRange !== 'all') {
+        const createdAt = new Date(ticket.created_at);
+        if (Number.isNaN(createdAt.getTime())) return false;
+        if (filters.dateRange === 'today' && createdAt < startOfToday) return false;
+        if (filters.dateRange === 'week' && createdAt < startOfWeek) return false;
+        if (filters.dateRange === 'month' && createdAt < startOfMonth) return false;
+      }
+
+      if (filters.department !== 'all') {
+        const requesterDepartment = profileMap.get(ticket.requester_id)?.department_id;
+        const assigneeDepartment = ticket.assignee_id ? profileMap.get(ticket.assignee_id)?.department_id : null;
+        if (requesterDepartment !== filters.department && assigneeDepartment !== filters.department) return false;
+      }
+
+      return true;
+    });
+  };
+
+  function getAvailableFilterOptions(data: DashboardRawData): DashboardFilterOptions {
+    const profileMap = new Map(data.profiles.map((p: any) => [p.user_id, p]));
+    const baseFilters = filters;
+    const hasMatches = (override: Partial<FiltersState>) => (
+      filterTicketsWithFilters(data.tickets, profileMap, { ...baseFilters, ...override }).length > 0
+    );
+
+    return {
+      dateRange: dateRangeOptions.filter(value => value === 'all' || hasMatches({ dateRange: value })),
+      priority: priorityOptions.filter(value => value === 'all' || hasMatches({ priority: value })),
+      status: statusOptions.filter(value => value === 'all' || hasMatches({ status: value })),
+      assignee: [
+        'all',
+        ...data.agentUsers
+          .map((agent: any) => agent.user_id)
+          .filter((id: string) => hasMatches({ assignee: id })),
+      ],
+      department: [
+        'all',
+        ...departments
+          .map(department => department.id)
+          .filter((id: string) => hasMatches({ department: id })),
+      ],
+    };
+  }
+
+  function filterTicketsWithFilters(tickets: any[], profileMap: Map<string, any>, activeFilters: FiltersState) {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = subDays(startOfToday, 6);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    return tickets.filter((ticket: any) => {
+      if (activeFilters.priority !== 'all' && ticket.priority !== activeFilters.priority) return false;
+      if (activeFilters.status !== 'all' && ticket.status !== activeFilters.status) return false;
+      if (activeFilters.assignee !== 'all' && ticket.assignee_id !== activeFilters.assignee) return false;
+
+      if (activeFilters.dateRange !== 'all') {
+        const createdAt = new Date(ticket.created_at);
+        if (Number.isNaN(createdAt.getTime())) return false;
+        if (activeFilters.dateRange === 'today' && createdAt < startOfToday) return false;
+        if (activeFilters.dateRange === 'week' && createdAt < startOfWeek) return false;
+        if (activeFilters.dateRange === 'month' && createdAt < startOfMonth) return false;
+      }
+
+      if (activeFilters.department !== 'all') {
+        const requesterDepartment = profileMap.get(ticket.requester_id)?.department_id;
+        const assigneeDepartment = ticket.assignee_id ? profileMap.get(ticket.assignee_id)?.department_id : null;
+        if (requesterDepartment !== activeFilters.department && assigneeDepartment !== activeFilters.department) return false;
+      }
+
+      return true;
+    });
+  }
+
+  const applyDashboardFilters = (data: DashboardRawData) => {
+    const profileMap = new Map(data.profiles.map((p: any) => [p.user_id, p]));
+    const tickets = filterTickets(data.tickets, profileMap);
+    const visibleTicketIds = new Set(tickets.map((ticket: any) => ticket.id));
+    const visibleSlaData = data.slaData.filter((s: any) => visibleTicketIds.has(pick<string>(s, 'ticket_id', 'ticketId')));
+    const breachedTicketIds = new Set(visibleSlaData
+      .filter((s: any) => pick<boolean>(s, 'breached_response', 'breachedResponse') || pick<boolean>(s, 'breached_resolve', 'breachedResolve'))
+      .map((s: any) => pick<string>(s, 'ticket_id', 'ticketId')));
+    const slaByTicketId = new Map(visibleSlaData.map((s: any) => [pick<string>(s, 'ticket_id', 'ticketId'), s]));
+    const groupMap = new Map(data.groups.map((group: any) => [group.id, group.name]));
+
+    setEmployeeKpiRows(data.performanceRows);
 
       // KPI
       setKpi({
@@ -137,21 +313,25 @@ export default function Dashboard() {
       setTicketsByPriority(Array.from(prioMap, ([name, value]) => ({ name, value })));
 
       // SLA performance
-      const totalSla = (slaData || []).length;
-      const withinSla = (slaData || []).filter((s: any) => !s.breached_response && !s.breached_resolve).length;
+      const totalSla = visibleSlaData.length;
+      const withinSla = visibleSlaData.filter((s: any) =>
+        !pick<boolean>(s, 'breached_response', 'breachedResponse') &&
+        !pick<boolean>(s, 'breached_resolve', 'breachedResolve')
+      ).length;
       setSlaPerformance(totalSla > 0 ? Math.round((withinSla / totalSla) * 100) : 100);
 
       // Recent tickets with names
-      const profileMap = new Map(normalizedProfiles.map((p: any) => [p.user_id, p.name]));
       const recent = tickets.slice(0, 8);
       setRecentTickets(recent.map((t: any) => ({
         ...t,
-        requester_name: profileMap.get(t.requester_id) || '-',
-        assignee_name: t.assignee_id ? profileMap.get(t.assignee_id) || '-' : '-',
+        requester_name: profileMap.get(t.requester_id)?.name || '-',
+        assignee_name: t.assignee_id ? profileMap.get(t.assignee_id)?.name || '-' : '-',
       })));
 
       // Recent activity
-      const history = (historyData || []).map((historyItem: any) => ({
+      const history = data.historyData
+        .filter((historyItem: any) => visibleTicketIds.has(pick<string>(historyItem, 'ticket_id', 'ticketId')))
+        .map((historyItem: any) => ({
         ...historyItem,
         actor_id: pick<string>(historyItem, 'actor_id', 'actorId') || '',
         ticket_id: pick<string>(historyItem, 'ticket_id', 'ticketId') || '',
@@ -162,22 +342,38 @@ export default function Dashboard() {
       const ticketMap = new Map(tickets.map((t: any) => [t.id, t.title]));
       setRecentActivity(history.map((h: any) => ({
         ...h,
-        actor_name: profileMap.get(h.actor_id) || '-',
+        actor_name: profileMap.get(h.actor_id)?.name || '-',
         ticket_title: ticketMap.get(h.ticket_id) || '-',
       })));
 
       // Team workload
       const activeTickets = tickets.filter((t: any) => ['new', 'assigned', 'in_progress'].includes(t.status));
-      setTeamMembers(agentUsers.map((a: any) => {
+      setTeamMembers(data.agentUsers.map((a: any) => {
         const myTickets = activeTickets.filter((t: any) => t.assignee_id === a.user_id);
-        const roleEntry = agentRoles.find((r: any) => r.user_id === a.user_id);
-        return { id: a.user_id, name: a.name, role: roleEntry?.role === 'admin' ? 'Admin' : roleEntry?.role === 'manager' ? 'Manager' : 'Agent', activeTickets: myTickets.length, avgResponseMin: Math.round(Math.random() * 30 + 5) };
+        const roleEntry = data.agentRoles.find((r: any) => r.user_id === a.user_id);
+        const responseTimes = myTickets
+          .map((ticket: any) => {
+            const sla = slaByTicketId.get(ticket.id);
+            const respondedAt = pick<string>(sla, 'responded_at', 'respondedAt');
+            if (!respondedAt) return null;
+            const createdAt = new Date(ticket.created_at).getTime();
+            const responseAt = new Date(respondedAt).getTime();
+            if (Number.isNaN(createdAt) || Number.isNaN(responseAt) || responseAt < createdAt) return null;
+            return Math.round((responseAt - createdAt) / 60000);
+          })
+          .filter((minutes): minutes is number => minutes !== null);
+        const avgResponseMin = responseTimes.length
+          ? Math.round(responseTimes.reduce((sum, minutes) => sum + minutes, 0) / responseTimes.length)
+          : 0;
+        const position = a.group_id ? groupMap.get(a.group_id) : null;
+        return {
+          id: a.user_id,
+          name: a.name,
+          role: position || (roleEntry?.role === 'admin' ? 'Admin' : roleEntry?.role === 'manager' ? 'Manager' : 'Agent'),
+          activeTickets: myTickets.length,
+          avgResponseMin,
+        };
       }));
-    } catch (error) {
-      console.error('Dashboard data fetch error:', error);
-    } finally {
-      setLoading(false);
-    }
   };
 
   if (loading) {
@@ -201,11 +397,17 @@ export default function Dashboard() {
 
       {isAdmin && (
         <motion.div variants={itemVariants}>
-          <DashboardFilters filters={filters} onFilterChange={(key, value) => setFilters(prev => ({ ...prev, [key]: value }))} onReset={() => setFilters(defaultFilters)} departments={departments} agents={agents} />
+          <DashboardFilters filters={filters} onFilterChange={(key, value) => setFilters(prev => ({ ...prev, [key]: value }))} onReset={() => setFilters(defaultFilters)} departments={departments} agents={agents} filterOptions={filterOptions} />
         </motion.div>
       )}
 
       <motion.div variants={itemVariants}><KPICards {...kpi} /></motion.div>
+
+      {isAdmin && (
+        <motion.div variants={itemVariants}>
+          <EmployeeKpiSummary rows={employeeKpiRows} />
+        </motion.div>
+      )}
 
       {isAdmin && attentionItems.length > 0 && (
         <motion.div variants={itemVariants} className="grid gap-4 lg:grid-cols-3">

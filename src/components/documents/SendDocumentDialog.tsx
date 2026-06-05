@@ -19,6 +19,8 @@ interface SendDocumentDialogProps {
   fileType: 'docx' | 'xlsx';
 }
 
+const getProfileUserId = (profile: any) => profile?.user_id || profile?.userId;
+
 export default function SendDocumentDialog({ open, onOpenChange, fileBlob, fileName, fileType }: SendDocumentDialogProps) {
   const { t } = useLanguage();
   const { user } = useAuth();
@@ -33,7 +35,10 @@ export default function SendDocumentDialog({ open, onOpenChange, fileBlob, fileN
     const fetchUsers = async () => {
       try {
         const data = await api.getProfiles();
-        setUsers((data || []).filter((p: any) => p.user_id !== user?.id));
+        setUsers((data || []).filter((p: any) => {
+          const profileUserId = getProfileUserId(p);
+          return profileUserId && profileUserId !== user?.id;
+        }));
       } catch { /* ignore */ }
     };
     fetchUsers();
@@ -45,12 +50,14 @@ export default function SendDocumentDialog({ open, onOpenChange, fileBlob, fileN
   );
 
   const handleSend = async () => {
-    if (!selectedUser || !fileBlob || !user) return;
+    const recipientId = getProfileUserId(selectedUser);
+    if (!recipientId || !fileBlob || !user) return;
     setSending(true);
 
     try {
-      await api.sendDocument(selectedUser.user_id, fileName, fileType, fileBlob, message || undefined);
+      await api.sendDocument(recipientId, fileName, fileType, fileBlob, message || undefined);
       toast.success(t('docs.sentSuccess'));
+      window.dispatchEvent(new CustomEvent('documents-changed'));
       onOpenChange(false);
       setSelectedUser(null);
       setMessage('');
@@ -93,10 +100,10 @@ export default function SendDocumentDialog({ open, onOpenChange, fileBlob, fileN
               <div className="p-1">
                 {filtered.map((u) => (
                   <button
-                    key={u.user_id}
+                    key={getProfileUserId(u)}
                     onClick={() => setSelectedUser(u)}
                     className={`w-full flex items-center gap-3 p-2 rounded-md text-left transition-colors ${
-                      selectedUser?.user_id === u.user_id
+                      getProfileUserId(selectedUser) === getProfileUserId(u)
                         ? 'bg-primary/10 ring-1 ring-primary'
                         : 'hover:bg-muted'
                     }`}
@@ -132,7 +139,7 @@ export default function SendDocumentDialog({ open, onOpenChange, fileBlob, fileN
 
           <Button
             onClick={handleSend}
-            disabled={!selectedUser || sending}
+            disabled={!getProfileUserId(selectedUser) || sending}
             className="w-full gap-2"
           >
             <Send className="h-4 w-4" />

@@ -12,9 +12,9 @@ import { toast } from 'sonner';
 import {
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Download, FileText, Undo, Redo, Type, Heading1, Heading2,
-  FileDown, Palette, Send, Upload,
+  FileDown, Palette, Send, Upload, Image as ImageIcon,
 } from 'lucide-react';
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun } from 'docx';
 import mammoth from 'mammoth';
 import { saveAs } from 'file-saver';
 import { Separator } from '@/components/ui/separator';
@@ -31,6 +31,7 @@ export default function WordEditor() {
   const { profile } = useAuth();
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState('document');
   const [showTemplates, setShowTemplates] = useState(false);
   const [ticketData, setTicketData] = useState<any>(null);
@@ -63,6 +64,43 @@ export default function WordEditor() {
     document.execCommand(command, false, value);
     editorRef.current?.focus();
   }, []);
+
+  const handleInsertImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const supportedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/bmp'];
+    if (!supportedTypes.includes(file.type)) {
+      toast.error(t('docs.invalidFormat'));
+      if (imageInputRef.current) imageInputRef.current.value = '';
+      return;
+    }
+
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const img = new Image();
+    img.onload = () => {
+      const maxWidth = 640;
+      const ratio = img.naturalWidth > maxWidth ? maxWidth / img.naturalWidth : 1;
+      const width = Math.round(img.naturalWidth * ratio);
+      const height = Math.round(img.naturalHeight * ratio);
+      const imageHtml = `<p><img src="${dataUrl}" alt="${file.name}" data-width="${width}" data-height="${height}" style="max-width:100%;width:${width}px;height:auto;" /></p>`;
+
+      editorRef.current?.focus();
+      const inserted = document.execCommand('insertHTML', false, imageHtml);
+      if (!inserted && editorRef.current) {
+        editorRef.current.insertAdjacentHTML('beforeend', imageHtml);
+      }
+    };
+    img.src = dataUrl;
+
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  };
 
   const loadTicketForAct = async () => {
     if (!ticketId.trim()) return;
@@ -165,7 +203,24 @@ export default function WordEditor() {
     const htmlContent = editorRef.current;
     const paragraphs: Paragraph[] = [];
 
-    const parseNode = (node: Node) => {
+    const dataUrlToBytes = (dataUrl: string) => {
+      const [, base64 = ''] = dataUrl.split(',');
+      const binary = window.atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    };
+
+    const getImageType = (src: string): 'jpg' | 'png' | 'gif' | 'bmp' => {
+      if (src.startsWith('data:image/jpeg') || src.startsWith('data:image/jpg')) return 'jpg';
+      if (src.startsWith('data:image/gif')) return 'gif';
+      if (src.startsWith('data:image/bmp')) return 'bmp';
+      return 'png';
+    };
+
+    const parseNode = async (node: Node) => {
       if (node.nodeType === Node.TEXT_NODE) {
         const text = node.textContent || '';
         if (text.trim()) {
@@ -191,14 +246,40 @@ export default function WordEditor() {
         }));
       } else if (tag === 'br') {
         paragraphs.push(new Paragraph({ children: [] }));
+      } else if (tag === 'img') {
+        const image = el as HTMLImageElement;
+        const src = image.src || image.getAttribute('src') || '';
+        if (!src.startsWith('data:image/')) return;
+
+        const width = Number(image.dataset.width || image.width || 520);
+        const height = Number(image.dataset.height || image.height || 260);
+        paragraphs.push(new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [
+            new ImageRun({
+              type: getImageType(src),
+              data: dataUrlToBytes(src),
+              transformation: {
+                width: Math.min(width, 520),
+                height: Math.round(height * (Math.min(width, 520) / Math.max(width, 1))),
+              },
+              altText: {
+                title: image.alt || 'Image',
+                description: image.alt || 'Inserted image',
+                name: image.alt || 'Image',
+              },
+            }),
+          ],
+        }));
       } else if (tag === 'p' || tag === 'div') {
-        const runs: TextRun[] = [];
+        const runs: Array<TextRun | ImageRun> = [];
         const processInline = (n: Node) => {
           if (n.nodeType === Node.TEXT_NODE) {
             runs.push(new TextRun(n.textContent || ''));
           } else if (n.nodeType === Node.ELEMENT_NODE) {
             const inEl = n as HTMLElement;
             const inTag = inEl.tagName.toLowerCase();
+            if (inTag === 'img') return;
             const opts: any = { text: inEl.textContent || '' };
             if (inTag === 'strong' || inTag === 'b') opts.bold = true;
             if (inTag === 'em' || inTag === 'i') opts.italics = true;
@@ -207,26 +288,36 @@ export default function WordEditor() {
           }
         };
         el.childNodes.forEach(processInline);
-        if (runs.length === 0) runs.push(new TextRun(''));
+        const images = Array.from(el.querySelectorAll(':scope > img'));
+        if (runs.length > 0) {
+          const alignMap: Record<string, (typeof AlignmentType)[keyof typeof AlignmentType]> = {
+            center: AlignmentType.CENTER,
+            right: AlignmentType.RIGHT,
+            justify: AlignmentType.JUSTIFIED,
+          };
+          const alignment = alignMap[el.style.textAlign] || AlignmentType.LEFT;
 
-        const alignMap: Record<string, (typeof AlignmentType)[keyof typeof AlignmentType]> = {
-          center: AlignmentType.CENTER,
-          right: AlignmentType.RIGHT,
-          justify: AlignmentType.JUSTIFIED,
-        };
-        const alignment = alignMap[el.style.textAlign] || AlignmentType.LEFT;
+          paragraphs.push(new Paragraph({ alignment, children: runs }));
+        }
 
-        paragraphs.push(new Paragraph({ alignment, children: runs }));
+        for (const image of images) {
+          await parseNode(image);
+        }
+        if (runs.length === 0 && images.length === 0) paragraphs.push(new Paragraph({ children: [new TextRun('')] }));
       } else if (tag === 'table') {
         el.querySelectorAll('td, th').forEach(cell => {
           paragraphs.push(new Paragraph({ children: [new TextRun(cell.textContent || '')] }));
         });
       } else {
-        el.childNodes.forEach(parseNode);
+        for (const child of Array.from(el.childNodes)) {
+          await parseNode(child);
+        }
       }
     };
 
-    htmlContent.childNodes.forEach(parseNode);
+    for (const child of Array.from(htmlContent.childNodes)) {
+      await parseNode(child);
+    }
 
     if (paragraphs.length === 0) {
       paragraphs.push(new Paragraph({ children: [new TextRun(' ')] }));
@@ -340,6 +431,13 @@ export default function WordEditor() {
                 onChange={handleUploadDocx}
                 className="hidden"
               />
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/bmp"
+                onChange={handleInsertImage}
+                className="hidden"
+              />
               <Button onClick={() => fileInputRef.current?.click()} size="sm" variant="outline" className="gap-2">
                 <Upload className="h-4 w-4" />
                 {t('docs.uploadDocx')}
@@ -404,6 +502,10 @@ export default function WordEditor() {
 
             <ToolBtn icon={List} title="Bullet List" onClick={() => execCommand('insertUnorderedList')} />
             <ToolBtn icon={ListOrdered} title="Numbered List" onClick={() => execCommand('insertOrderedList')} />
+
+            <Separator orientation="vertical" className="h-6 mx-1" />
+
+            <ToolBtn icon={ImageIcon} title={t('docs.insertImage')} onClick={() => imageInputRef.current?.click()} />
 
             <Separator orientation="vertical" className="h-6 mx-1" />
 
