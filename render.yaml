@@ -38,3 +38,6 @@ databases:
   - name: qazaq-generation-db
     databaseName: qazaq_generation
     plan: free
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: everywhere
