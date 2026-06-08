@@ -59,7 +59,7 @@ export default function Login() {
   );
   const getRedirectPath = () => {
     const value = new URLSearchParams(location.search).get('redirect');
-    return value?.startsWith('/') && !value.startsWith('//') ? value : '/dashboard';
+    return value?.startsWith('/') && !value.startsWith('//') && !value.startsWith('/login') ? value : '/dashboard';
   };
 
   const handleCredentialsSubmit = async (e: React.FormEvent) => {

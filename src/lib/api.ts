@@ -36,10 +36,10 @@ class ApiClient {
       headers,
     });
 
-    if (res.status === 401) {
+    if (res.status === 401 && !path.startsWith('/auth/')) {
       this.setToken(null);
       const currentPath = `${window.location.pathname}${window.location.search}`;
-      const redirect = currentPath && currentPath !== '/login' ? `?redirect=${encodeURIComponent(currentPath)}` : '';
+      const redirect = currentPath && !currentPath.startsWith('/login') ? `?redirect=${encodeURIComponent(currentPath)}` : '';
       window.location.href = `/login${redirect}`;
       throw new Error('Unauthorized');
     }

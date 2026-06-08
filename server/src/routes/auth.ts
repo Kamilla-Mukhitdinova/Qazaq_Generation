@@ -206,7 +206,7 @@ router.post('/verify-2fa', async (req, res) => {
 
     const delta = totp.validate({ token: otpCode, window: LOGIN_TOTP_WINDOW });
     if (delta === null) {
-      return res.status(401).json({ error: 'OTP коды қате' });
+      return res.status(400).json({ error: 'OTP коды қате' });
     }
 
     const [roleRow] = await db.select().from(userRoles).where(eq(userRoles.userId, user.id)).limit(1);
