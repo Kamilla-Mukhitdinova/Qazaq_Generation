@@ -35,6 +35,13 @@ export default function AppLayout() {
   }
 
   if (!user) {
+    if (localStorage.getItem('auth_token')) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      );
+    }
     const redirect = encodeURIComponent(`${location.pathname}${location.search}`);
     return <Navigate to={`/login?redirect=${redirect}`} replace />;
   }
