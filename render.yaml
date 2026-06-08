@@ -4,7 +4,7 @@ services:
     runtime: node
     rootDir: server
     plan: free
-    buildCommand: npm install && npm run build && npm run db:push
+    buildCommand: npm install --include=dev && npm run build && npm run db:push
     startCommand: npm run start
     healthCheckPath: /api/health
     envVars:
