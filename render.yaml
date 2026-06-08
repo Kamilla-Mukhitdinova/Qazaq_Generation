@@ -20,7 +20,7 @@ services:
       - key: JWT_EXPIRES_IN
         value: 7d
       - key: FRONTEND_URL
-        sync: false
+        value: https://qazaq-generation.vercel.app
       - key: OPENAI_BASE_URL
         value: https://api.openai.com/v1
       - key: OPENAI_API_KEY

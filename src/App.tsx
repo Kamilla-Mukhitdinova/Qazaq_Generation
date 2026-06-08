@@ -124,7 +124,7 @@ const App = () => {
                       <Route path="/assets" element={<RequireRoles roles={['manager', 'admin']}><AssetManagement /></RequireRoles>} />
                       <Route path="/chat" element={<RequireRoles roles={['agent', 'manager', 'admin']}><InternalChat /></RequireRoles>} />
                       <Route path="/meetings" element={<RequireRoles roles={['agent', 'manager', 'admin']}><VideoConferences /></RequireRoles>} />
-                      <Route path="/meet/:meetingId" element={<RequireRoles roles={['agent', 'manager', 'admin']}><VideoConferences /></RequireRoles>} />
+                      <Route path="/meet/:meetingId" element={<VideoConferences />} />
                       <Route path="/knowledge" element={<RequireRoles roles={['agent', 'manager', 'admin']}><KnowledgeBase /></RequireRoles>} />
                       <Route path="/knowledge/:id" element={<RequireRoles roles={['agent', 'manager', 'admin']}><KnowledgeBaseArticle /></RequireRoles>} />
                       <Route path="/documents" element={<RequireRoles roles={['agent', 'manager', 'admin']}><Documents /></RequireRoles>} />

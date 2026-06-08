@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ export default function Register() {
   const [isLoading, setIsLoading] = useState(false);
   const { signUp } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { t } = useLanguage();
   const { theme } = useTheme();
@@ -46,6 +47,10 @@ export default function Register() {
       ? 'border-white/12 bg-white/[0.07] text-white placeholder:text-slate-400 focus:border-white/28 focus:bg-white/[0.09] focus:ring-sky-300/10'
       : 'border-slate-900/10 bg-white/70 text-slate-950 placeholder:text-slate-400 focus:border-slate-400/70 focus:bg-white/85 focus:ring-slate-400/20'
   );
+  const getRedirectPath = () => {
+    const value = new URLSearchParams(location.search).get('redirect');
+    return value?.startsWith('/') && !value.startsWith('//') ? value : '/tickets';
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,7 +98,7 @@ export default function Register() {
         title: t('common.success'),
         description: t('auth.confirmEmail'),
       });
-      navigate('/login');
+      navigate(getRedirectPath());
     }
 
     setIsLoading(false);
@@ -294,7 +299,7 @@ export default function Register() {
               </Button>
               <p className={cn('text-center text-sm', isDark ? 'text-slate-300/85' : 'text-slate-600')}>
                 {t('auth.hasAccount')}{' '}
-                <Link to="/login" className="font-semibold text-gold transition-colors hover:text-gold/80 hover:underline">
+                <Link to={`/login${location.search}`} className="font-semibold text-gold transition-colors hover:text-gold/80 hover:underline">
                   {t('auth.login')}
                 </Link>
               </p>

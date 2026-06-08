@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -38,6 +38,7 @@ export default function Login() {
   const [tempToken, setTempToken] = useState<string | null>(null);
   const { signIn, verify2FA } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { t } = useLanguage();
   const { theme } = useTheme();
@@ -56,6 +57,10 @@ export default function Login() {
       ? 'border-white/12 bg-white/[0.07] text-white placeholder:text-slate-400 focus:border-white/28 focus:bg-white/[0.09] focus:ring-sky-300/10'
       : 'border-slate-900/10 bg-white/72 text-slate-950 placeholder:text-slate-400 focus:border-slate-400/70 focus:bg-white/90 focus:ring-slate-400/20'
   );
+  const getRedirectPath = () => {
+    const value = new URLSearchParams(location.search).get('redirect');
+    return value?.startsWith('/') && !value.startsWith('//') ? value : '/dashboard';
+  };
 
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,7 +86,7 @@ export default function Login() {
         return;
       }
 
-      navigate('/dashboard');
+      navigate(getRedirectPath());
     } catch (error) {
       console.error('Login error:', error);
       toast({
@@ -112,7 +117,7 @@ export default function Login() {
         return;
       }
 
-      navigate('/dashboard');
+      navigate(getRedirectPath());
     } catch (error) {
       console.error('OTP verification error:', error);
       toast({
@@ -370,7 +375,7 @@ export default function Login() {
                     </motion.div>
                     <motion.p className={cn('text-center text-sm', isDark ? 'text-slate-300/85' : 'text-slate-600')} variants={itemVariants}>
                       {t('auth.noAccount')}{' '}
-                      <Link to="/register" className="text-gold hover:text-gold/80 hover:underline font-medium transition-colors">
+                      <Link to={`/register${location.search}`} className="text-gold hover:text-gold/80 hover:underline font-medium transition-colors">
                         {t('auth.register')}
                       </Link>
                     </motion.p>

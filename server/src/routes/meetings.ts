@@ -51,7 +51,10 @@ const storage = multer.diskStorage({
 const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024 } });
 
 function getFrontendOrigin(req: Request) {
-  return process.env.FRONTEND_URL?.split(',')[0]?.trim() || `${req.protocol}://${req.get('host')}`;
+  return (
+    process.env.FRONTEND_URL?.split(',')[0]?.trim() ||
+    (process.env.NODE_ENV === 'production' ? 'https://qazaq-generation.vercel.app' : `${req.protocol}://${req.get('host')}`)
+  );
 }
 
 function buildInviteLink(req: Request, id: string) {

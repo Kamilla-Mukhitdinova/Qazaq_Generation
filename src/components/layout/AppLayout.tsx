@@ -35,7 +35,8 @@ export default function AppLayout() {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    const redirect = encodeURIComponent(`${location.pathname}${location.search}`);
+    return <Navigate to={`/login?redirect=${redirect}`} replace />;
   }
 
   if (role === 'employee') {
