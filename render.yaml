@@ -1,8 +1,9 @@
 services:
   - type: web
-    name: qazaq-generation-api
+    name: qazaq-generation-api-frankfurt
     runtime: node
     rootDir: server
+    region: frankfurt
     plan: free
     buildCommand: npm install --include=dev && npm run build && npm run db:push
     startCommand: npm run start
