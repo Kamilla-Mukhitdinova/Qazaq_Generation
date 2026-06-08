@@ -79,6 +79,24 @@ export default function Profile() {
     }
   };
 
+  const handlePushToggle = async (checked: boolean) => {
+    const result = checked ? await push.subscribe() : await push.unsubscribe();
+
+    if (result.ok) {
+      toast({
+        title: t('common.success'),
+        description: checked ? t('profile.pushEnabled') : t('profile.pushDisabled'),
+      });
+      return;
+    }
+
+    toast({
+      title: t('common.error'),
+      description: result.error,
+      variant: 'destructive',
+    });
+  };
+
   const handleAvatarFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -184,12 +202,12 @@ export default function Profile() {
                 <Switch
                   checked={push.isSubscribed}
                   disabled={push.loading}
-                  onCheckedChange={(checked) => {
-                    if (checked) push.subscribe();
-                    else push.unsubscribe();
-                  }}
+                  onCheckedChange={handlePushToggle}
                 />
               </div>
+              {push.error && (
+                <p className="mt-3 text-xs text-destructive">{push.error}</p>
+              )}
             </CardContent>
           </Card>
         </motion.div>

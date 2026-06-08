@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { api } from '@/lib/api';
 import {
   LayoutDashboard,
   Ticket,
@@ -72,7 +73,6 @@ import {
   PieChart,
   Plus,
   Puzzle,
-  Repeat,
   Settings,
   Settings2,
   ShieldCheck,
@@ -97,10 +97,16 @@ import logo from '@/assets/logo.png';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useState } from 'react';
 import type { PointerEvent } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 const SIDEBAR_MIN_WIDTH = 248;
 const SIDEBAR_MAX_WIDTH = 320;
 const SIDEBAR_DEFAULT_WIDTH = 280;
+const ALL_ROLES = ['employee', 'agent', 'manager', 'admin'];
+const EMPLOYEE_ROLES = ['employee'];
+const STAFF_ROLES = ['agent', 'manager', 'admin'];
+const MANAGER_ROLES = ['manager', 'admin'];
+const ADMIN_ROLES = ['admin'];
 
 interface SidebarProps {
   collapsed?: boolean;
@@ -129,6 +135,11 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
   const { profile, role, signOut } = useAuth();
   const { t } = useLanguage();
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const { data: groups = [] } = useQuery({
+    queryKey: ['groups'],
+    queryFn: () => api.getGroups(),
+    enabled: role === 'agent',
+  });
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH;
 
@@ -140,118 +151,117 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
   const isResizable = Boolean(onToggleCollapse);
 
   const navStructure: NavStructure = [
-    { icon: LayoutDashboard, labelKey: 'nav.dashboard', href: '/dashboard', roles: ['employee', 'agent', 'manager', 'admin'] },
+    { icon: LayoutDashboard, labelKey: 'nav.dashboard', href: '/dashboard', roles: STAFF_ROLES },
     {
       icon: Package,
       labelKey: 'nav.assets',
       items: [
-        { icon: LayoutDashboard, labelKey: 'nav.assets.panel', href: '/assets?section=panel', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Computer, labelKey: 'nav.assets.computers', href: '/assets?section=computers', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Monitor, labelKey: 'nav.assets.monitors', href: '/assets?section=monitors', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: AppWindow, labelKey: 'nav.assets.software', href: '/assets?section=software', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Network, labelKey: 'nav.assets.networkDevices', href: '/assets?section=network-devices', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Cpu, labelKey: 'nav.assets.devices', href: '/assets?section=devices', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Printer, labelKey: 'nav.assets.printers', href: '/assets?section=printers', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: HardDrive, labelKey: 'nav.assets.cartridges', href: '/assets?section=cartridges', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Boxes, labelKey: 'nav.assets.consumables', href: '/assets?section=consumables', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Phone, labelKey: 'nav.assets.phones', href: '/assets?section=phones', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Server, labelKey: 'nav.assets.racks', href: '/assets?section=racks', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Box, labelKey: 'nav.assets.cases', href: '/assets?section=cases', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Plug, labelKey: 'nav.assets.powerDistribution', href: '/assets?section=power-distribution', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Router, labelKey: 'nav.assets.passiveDevices', href: '/assets?section=passive-devices', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Package, labelKey: 'nav.assets.unmanagedAssets', href: '/assets?section=unmanaged-assets', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Cable, labelKey: 'nav.assets.cables', href: '/assets?section=cables', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Smartphone, labelKey: 'nav.assets.simCards', href: '/assets?section=sim-cards', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: ShieldCheck, labelKey: 'nav.assets.vpn', href: '/assets?section=vpn', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: BarChart3, labelKey: 'nav.assets.reportAnalytics', href: '/assets?section=report-analytics', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Globe, labelKey: 'nav.assets.global', href: '/assets?section=global', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: LayoutDashboard, labelKey: 'nav.assets.panel', href: '/assets?section=panel', roles: MANAGER_ROLES },
+        { icon: Computer, labelKey: 'nav.assets.computers', href: '/assets?section=computers', roles: MANAGER_ROLES },
+        { icon: Monitor, labelKey: 'nav.assets.monitors', href: '/assets?section=monitors', roles: MANAGER_ROLES },
+        { icon: AppWindow, labelKey: 'nav.assets.software', href: '/assets?section=software', roles: MANAGER_ROLES },
+        { icon: Network, labelKey: 'nav.assets.networkDevices', href: '/assets?section=network-devices', roles: MANAGER_ROLES },
+        { icon: Cpu, labelKey: 'nav.assets.devices', href: '/assets?section=devices', roles: MANAGER_ROLES },
+        { icon: Printer, labelKey: 'nav.assets.printers', href: '/assets?section=printers', roles: MANAGER_ROLES },
+        { icon: HardDrive, labelKey: 'nav.assets.cartridges', href: '/assets?section=cartridges', roles: MANAGER_ROLES },
+        { icon: Boxes, labelKey: 'nav.assets.consumables', href: '/assets?section=consumables', roles: MANAGER_ROLES },
+        { icon: Phone, labelKey: 'nav.assets.phones', href: '/assets?section=phones', roles: MANAGER_ROLES },
+        { icon: Server, labelKey: 'nav.assets.racks', href: '/assets?section=racks', roles: MANAGER_ROLES },
+        { icon: Box, labelKey: 'nav.assets.cases', href: '/assets?section=cases', roles: MANAGER_ROLES },
+        { icon: Plug, labelKey: 'nav.assets.powerDistribution', href: '/assets?section=power-distribution', roles: MANAGER_ROLES },
+        { icon: Router, labelKey: 'nav.assets.passiveDevices', href: '/assets?section=passive-devices', roles: MANAGER_ROLES },
+        { icon: Package, labelKey: 'nav.assets.unmanagedAssets', href: '/assets?section=unmanaged-assets', roles: MANAGER_ROLES },
+        { icon: Cable, labelKey: 'nav.assets.cables', href: '/assets?section=cables', roles: MANAGER_ROLES },
+        { icon: Smartphone, labelKey: 'nav.assets.simCards', href: '/assets?section=sim-cards', roles: MANAGER_ROLES },
+        { icon: ShieldCheck, labelKey: 'nav.assets.vpn', href: '/assets?section=vpn', roles: MANAGER_ROLES },
+        { icon: BarChart3, labelKey: 'nav.assets.reportAnalytics', href: '/assets?section=report-analytics', roles: MANAGER_ROLES },
+        { icon: Globe, labelKey: 'nav.assets.global', href: '/assets?section=global', roles: MANAGER_ROLES },
       ],
-      roles: ['employee', 'agent', 'manager', 'admin'],
+      roles: MANAGER_ROLES,
     },
     {
       icon: Ticket,
       labelKey: 'nav.support',
       items: [
-        { icon: Ticket, labelKey: 'nav.tickets', href: '/tickets', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Plus, labelKey: 'nav.support.createTicket', href: '/tickets/new', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: ClipboardCheck, labelKey: 'nav.support.ppr', href: '/ppr', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: TriangleAlert, labelKey: 'nav.support.problems', href: '/tickets?type=problems', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: ClipboardList, labelKey: 'nav.support.changes', href: '/tickets?type=changes', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: CalendarClock, labelKey: 'nav.support.planning', href: '/tickets?type=planning', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: PieChart, labelKey: 'nav.support.statistics', href: '/reports?section=support-statistics', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: AlarmClock, labelKey: 'nav.support.periodicTickets', href: '/tickets?type=periodic', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Repeat, labelKey: 'nav.support.recurringChanges', href: '/tickets?type=recurring-changes', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: Ticket, labelKey: 'nav.tickets', href: '/tickets', roles: ALL_ROLES },
+        { icon: Plus, labelKey: 'nav.support.createTicket', href: '/tickets/new', roles: ALL_ROLES },
+        { icon: ClipboardCheck, labelKey: 'nav.support.ppr', href: '/ppr', roles: MANAGER_ROLES },
+        { icon: TriangleAlert, labelKey: 'nav.support.problems', href: '/tickets?type=problems', roles: MANAGER_ROLES },
+        { icon: ClipboardList, labelKey: 'nav.support.changes', href: '/tickets?type=changes', roles: MANAGER_ROLES },
+        { icon: CalendarClock, labelKey: 'nav.support.planning', href: '/tickets?type=planning', roles: MANAGER_ROLES },
+        { icon: PieChart, labelKey: 'nav.support.statistics', href: '/reports?section=support-statistics', roles: MANAGER_ROLES },
+        { icon: AlarmClock, labelKey: 'nav.support.periodicTickets', href: '/tickets?type=periodic', roles: MANAGER_ROLES },
       ],
-      roles: ['employee', 'agent', 'manager', 'admin'],
+      roles: ALL_ROLES,
     },
     {
       icon: BarChart3,
       labelKey: 'nav.management',
       items: [
-        { icon: KeyRound, labelKey: 'nav.management.licenses', href: '/assets?section=licenses', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Calculator, labelKey: 'nav.management.budgets', href: '/assets?section=budgets', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Handshake, labelKey: 'nav.management.suppliers', href: '/assets?section=suppliers', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Contact, labelKey: 'nav.management.contacts', href: '/assets?section=contacts', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: FileBadge, labelKey: 'nav.management.contracts', href: '/assets?section=contracts', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: PhoneCall, labelKey: 'nav.management.phoneLines', href: '/assets?section=phone-lines', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: BadgeCheck, labelKey: 'nav.management.certificates', href: '/assets?section=certificates', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Warehouse, labelKey: 'nav.management.dataCenters', href: '/assets?section=data-centers', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Network, labelKey: 'nav.management.clusters', href: '/assets?section=clusters', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Globe, labelKey: 'nav.management.domains', href: '/assets?section=domains', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Blocks, labelKey: 'nav.management.complexes', href: '/assets?section=complexes', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Database, labelKey: 'nav.management.databases', href: '/assets?section=databases', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: KeyRound, labelKey: 'nav.management.licenses', href: '/assets?section=licenses', roles: MANAGER_ROLES },
+        { icon: Calculator, labelKey: 'nav.management.budgets', href: '/assets?section=budgets', roles: MANAGER_ROLES },
+        { icon: Handshake, labelKey: 'nav.management.suppliers', href: '/assets?section=suppliers', roles: MANAGER_ROLES },
+        { icon: Contact, labelKey: 'nav.management.contacts', href: '/assets?section=contacts', roles: MANAGER_ROLES },
+        { icon: FileBadge, labelKey: 'nav.management.contracts', href: '/assets?section=contracts', roles: MANAGER_ROLES },
+        { icon: PhoneCall, labelKey: 'nav.management.phoneLines', href: '/assets?section=phone-lines', roles: MANAGER_ROLES },
+        { icon: BadgeCheck, labelKey: 'nav.management.certificates', href: '/assets?section=certificates', roles: MANAGER_ROLES },
+        { icon: Warehouse, labelKey: 'nav.management.dataCenters', href: '/assets?section=data-centers', roles: MANAGER_ROLES },
+        { icon: Network, labelKey: 'nav.management.clusters', href: '/assets?section=clusters', roles: MANAGER_ROLES },
+        { icon: Globe, labelKey: 'nav.management.domains', href: '/assets?section=domains', roles: MANAGER_ROLES },
+        { icon: Blocks, labelKey: 'nav.management.complexes', href: '/assets?section=complexes', roles: MANAGER_ROLES },
+        { icon: Database, labelKey: 'nav.management.databases', href: '/assets?section=databases', roles: MANAGER_ROLES },
       ],
-      roles: ['employee', 'agent', 'manager', 'admin'],
+      roles: MANAGER_ROLES,
     },
     {
       icon: Wrench,
       labelKey: 'nav.tools',
       items: [
-        { icon: BriefcaseBusiness, labelKey: 'nav.tools.projects', href: '/assets?section=projects', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: StickyNote, labelKey: 'nav.tools.reminders', href: '/assets?section=reminders', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Rss, labelKey: 'nav.tools.rssFeed', href: '/assets?section=rss-feed', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: BookOpen, labelKey: 'nav.tools.knowledgeBase', href: '/knowledge', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: CalendarCheck, labelKey: 'nav.tools.bookings', href: '/assets?section=bookings', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: ClipboardCheck, labelKey: 'nav.tools.reports', href: '/reports/manage', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: BadgeCheck, labelKey: 'nav.tools.performance', href: '/performance', roles: ['agent', 'manager', 'admin'] },
-        { icon: Bookmark, labelKey: 'nav.tools.savedSearches', href: '/assets?section=saved-searches', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Map, labelKey: 'nav.tools.cartography', href: '/assets?section=cartography', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: PieChart, labelKey: 'nav.tools.detailedReports', href: '/reports', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: MapPin, labelKey: 'nav.tools.ipAddressing', href: '/assets?section=ip-addressing', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: BriefcaseBusiness, labelKey: 'nav.tools.projects', href: '/assets?section=projects', roles: MANAGER_ROLES },
+        { icon: StickyNote, labelKey: 'nav.tools.reminders', href: '/assets?section=reminders', roles: MANAGER_ROLES },
+        { icon: Rss, labelKey: 'nav.tools.rssFeed', href: '/assets?section=rss-feed', roles: MANAGER_ROLES },
+        { icon: CalendarCheck, labelKey: 'nav.tools.bookings', href: '/assets?section=bookings', roles: MANAGER_ROLES },
+        { icon: ClipboardCheck, labelKey: 'nav.tools.reports', href: '/reports/manage', roles: MANAGER_ROLES },
+        { icon: BadgeCheck, labelKey: 'nav.tools.performance', href: '/performance', roles: MANAGER_ROLES },
+        { icon: Bookmark, labelKey: 'nav.tools.savedSearches', href: '/assets?section=saved-searches', roles: MANAGER_ROLES },
+        { icon: Map, labelKey: 'nav.tools.cartography', href: '/assets?section=cartography', roles: MANAGER_ROLES },
+        { icon: PieChart, labelKey: 'nav.tools.detailedReports', href: '/reports', roles: MANAGER_ROLES },
+        { icon: MapPin, labelKey: 'nav.tools.ipAddressing', href: '/assets?section=ip-addressing', roles: MANAGER_ROLES },
       ],
-      roles: ['employee', 'agent', 'manager', 'admin'],
+      roles: MANAGER_ROLES,
     },
     {
       icon: Users,
       labelKey: 'nav.administration',
       items: [
-        { icon: UserRound, labelKey: 'nav.users', href: '/admin/users', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: UsersRound, labelKey: 'nav.administration.groups', href: '/admin/groups', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Layers, labelKey: 'nav.administration.organizations', href: '/admin/organizations', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: BookOpen, labelKey: 'nav.administration.rules', href: '/admin/rules', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: NotebookTabs, labelKey: 'nav.administration.directories', href: '/admin/directories', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: UserCog, labelKey: 'nav.administration.profiles', href: '/admin/profiles', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: ListTodo, labelKey: 'nav.administration.notificationQueue', href: '/admin/notification-queue', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Logs, labelKey: 'nav.administration.logs', href: '/admin/logs', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: CloudDownload, labelKey: 'nav.administration.equipment', href: '/admin/equipment', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: Settings2, labelKey: 'nav.administration.glpiInventory', href: '/admin/glpi-inventory', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: FilePenLine, labelKey: 'nav.administration.forms', href: '/admin/forms', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: UserRound, labelKey: 'nav.users', href: '/admin/users', roles: ADMIN_ROLES },
+        { icon: UsersRound, labelKey: 'nav.administration.groups', href: '/admin/groups', roles: ADMIN_ROLES },
+        { icon: Layers, labelKey: 'nav.administration.organizations', href: '/admin/organizations', roles: ADMIN_ROLES },
+        { icon: BookOpen, labelKey: 'nav.administration.rules', href: '/admin/rules', roles: ADMIN_ROLES },
+        { icon: NotebookTabs, labelKey: 'nav.administration.directories', href: '/admin/directories', roles: ADMIN_ROLES },
+        { icon: UserCog, labelKey: 'nav.administration.profiles', href: '/admin/profiles', roles: ADMIN_ROLES },
+        { icon: ListTodo, labelKey: 'nav.administration.notificationQueue', href: '/admin/notification-queue', roles: ADMIN_ROLES },
+        { icon: Logs, labelKey: 'nav.administration.logs', href: '/admin/logs', roles: ADMIN_ROLES },
+        { icon: CloudDownload, labelKey: 'nav.administration.equipment', href: '/admin/equipment', roles: ADMIN_ROLES },
+        { icon: Settings2, labelKey: 'nav.administration.glpiInventory', href: '/admin/glpi-inventory', roles: ADMIN_ROLES },
+        { icon: FilePenLine, labelKey: 'nav.administration.forms', href: '/admin/forms', roles: ADMIN_ROLES },
       ],
-      roles: ['employee', 'agent', 'manager', 'admin'],
+      roles: ADMIN_ROLES,
     },
-    { icon: MessagesSquare, labelKey: 'nav.messages', href: '/chat', roles: ['employee', 'agent', 'manager', 'admin'] },
-    { icon: FileText, labelKey: 'nav.management.documents', href: '/documents', roles: ['employee', 'agent', 'manager', 'admin'] },
-    { icon: Video, labelKey: 'nav.videoConferences', href: '/meetings', roles: ['employee', 'agent', 'manager', 'admin'] },
-    { icon: MessageSquare, labelKey: 'nav.aiChat', href: '/ai-chat', roles: ['employee', 'agent', 'manager', 'admin'] },
-    { icon: BellRing, labelKey: 'nav.notifications', href: '/notifications', roles: ['employee', 'agent', 'manager', 'admin'] },
+    { icon: BookOpen, labelKey: 'nav.tools.knowledgeBase', href: '/knowledge', roles: STAFF_ROLES },
+    { icon: MessagesSquare, labelKey: 'nav.messages', href: '/chat', roles: STAFF_ROLES },
+    { icon: FileText, labelKey: 'nav.management.documents', href: '/documents', roles: STAFF_ROLES },
+    { icon: Video, labelKey: 'nav.videoConferences', href: '/meetings', roles: STAFF_ROLES },
+    { icon: MessageSquare, labelKey: 'nav.aiChat', href: '/ai-chat', roles: STAFF_ROLES },
+    { icon: BellRing, labelKey: 'nav.notifications', href: '/notifications', roles: STAFF_ROLES },
     {
       icon: Settings,
       labelKey: 'nav.settings',
       items: [
-        { icon: BellRing, labelKey: 'nav.settings.notifications', href: '/settings/notifications', roles: ['employee', 'agent', 'manager', 'admin'] },
-        { icon: LogIn, labelKey: 'nav.settings.authentication', href: '/settings/authentication', roles: ['employee', 'agent', 'manager', 'admin'] },
+        { icon: BellRing, labelKey: 'nav.settings.notifications', href: '/settings/notifications', roles: STAFF_ROLES },
+        { icon: LogIn, labelKey: 'nav.settings.authentication', href: '/settings/authentication', roles: ALL_ROLES },
       ],
-      roles: ['employee', 'agent', 'manager', 'admin'],
+      roles: STAFF_ROLES,
     },
   ];
 
@@ -267,11 +277,29 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
     }
   };
 
+  const getAgentPositionLabel = () => {
+    const groupId = profile?.group_id;
+    const group = groups.find((item: any) => (item.id || item.groupId) === groupId);
+    const groupName = String(group?.name || '').toLowerCase();
+
+    if (groupName.includes('1 линия') || groupName.includes('1-линия') || groupName.includes('перв')) {
+      return t('dashboard.employeeKpi.position.firstLine');
+    }
+    if (groupName.includes('2 линия') || groupName.includes('2-линия') || groupName.includes('втор')) {
+      return t('dashboard.employeeKpi.position.secondLine');
+    }
+    if (groupName.includes('3 линия') || groupName.includes('3-линия') || groupName.includes('трет')) {
+      return t('dashboard.employeeKpi.position.thirdLine');
+    }
+
+    return '';
+  };
+
   const getRoleLabel = () => {
     switch (role) {
       case 'admin': return t('role.admin');
       case 'manager': return t('role.manager');
-      case 'agent': return t('role.agent');
+      case 'agent': return getAgentPositionLabel() || t('role.agent');
       case 'employee': return t('role.employee');
       default: return '';
     }
@@ -484,13 +512,16 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
       <div className={cn('shrink-0 bg-sidebar/95 p-4', collapsed && 'px-2')}>
         <motion.div 
           className={cn(
-            'flex items-center gap-3 mb-3 p-2 rounded-lg cursor-pointer hover:bg-sidebar-accent/30 transition-colors',
+            'flex items-center gap-3 mb-3 p-2 rounded-lg transition-colors',
+            role === 'employee' ? 'cursor-default' : 'cursor-pointer hover:bg-sidebar-accent/30',
             collapsed && 'justify-center'
           )}
-          onClick={() => navigate('/profile')}
+          onClick={() => {
+            if (role !== 'employee') navigate('/profile');
+          }}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          title={collapsed ? t('nav.profile') : undefined}
+          title={collapsed && role !== 'employee' ? t('nav.profile') : undefined}
         >
           <Avatar className="h-10 w-10 ring-2 ring-primary/20">
             <AvatarImage src={profile?.avatar_url || ''} alt={profile?.name} />

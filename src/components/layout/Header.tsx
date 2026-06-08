@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Search, Plus, Menu, MessageSquare, Check, Loader2, FileText, Box, BookOpen, Users, Calendar, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -59,9 +59,12 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const seenUnreadIdsRef = useRef<Set<string> | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
   const navigate = useNavigate();
   const { role } = useAuth();
   const { t, language } = useLanguage();
+  const isEmployee = role === 'employee';
 
   const dateLocale = language === 'ru' ? ru : language === 'en' ? enUS : kk;
 
@@ -99,6 +102,63 @@ export default function Header({ onMenuClick }: HeaderProps) {
     return formatDistanceToNow(date, { addSuffix: true, locale: dateLocale });
   };
 
+  const getAudioContext = useCallback(() => {
+    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextCtor) return null;
+
+    const context = audioContextRef.current || new AudioContextCtor();
+    audioContextRef.current = context;
+    return context;
+  }, []);
+
+  const unlockNotificationSound = useCallback(() => {
+    void (async () => {
+      try {
+        const context = getAudioContext();
+        if (!context) return;
+        if (context.state === 'suspended') {
+          await context.resume();
+        }
+      } catch {
+        // Browsers can keep audio locked until a real user gesture.
+      }
+    })();
+  }, [getAudioContext]);
+
+  const playNotificationSound = useCallback(() => {
+    void (async () => {
+      try {
+        const context = getAudioContext();
+        if (!context) return;
+
+        if (context.state === 'suspended') {
+          await context.resume();
+        }
+
+        if (context.state !== 'running') return;
+
+        const start = context.currentTime + 0.01;
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, start);
+        oscillator.frequency.setValueAtTime(1174.66, start + 0.13);
+
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.12, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.32);
+
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(start);
+        oscillator.stop(start + 0.34);
+      } catch {
+        // Browsers can block audio until the user interacts with the page.
+      }
+    })();
+  }, [getAudioContext]);
+
   const fetchNotifications = useCallback(async () => {
     try {
       const data = await api.getNotifications();
@@ -108,12 +168,32 @@ export default function Header({ onMenuClick }: HeaderProps) {
         created_at: n.created_at ?? n.createdAt,
         payload_json: n.payload_json ?? n.payloadJson,
       }));
+      const unreadItems = items.filter((n: Notification) => !n.is_read);
+      const nextUnreadIds = new Set(unreadItems.map((n: Notification) => n.id));
+      const seenUnreadIds = seenUnreadIdsRef.current;
+
+      if (seenUnreadIds && unreadItems.some((n: Notification) => !seenUnreadIds.has(n.id))) {
+        playNotificationSound();
+      }
+
+      seenUnreadIdsRef.current = nextUnreadIds;
       setNotifications(items.slice(0, 20));
-      setUnreadCount(items.filter((n: Notification) => !n.is_read).length);
+      setUnreadCount(unreadItems.length);
     } catch (err) {
       console.error('Failed to fetch notifications:', err);
     }
-  }, []);
+  }, [playNotificationSound]);
+
+  useEffect(() => {
+    const unlock = () => unlockNotificationSound();
+    window.addEventListener('pointerdown', unlock, { passive: true });
+    window.addEventListener('keydown', unlock);
+
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, [unlockNotificationSound]);
 
   useEffect(() => {
     fetchNotifications();
@@ -326,6 +406,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
         <Menu className="h-5 w-5" />
       </Button>
 
+      {!isEmployee && (
       <form onSubmit={handleSearch} className="relative flex-1 max-w-md hidden md:block">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -375,10 +456,15 @@ export default function Header({ onMenuClick }: HeaderProps) {
           </div>
         )}
       </form>
+      )}
 
       <div className="flex items-center gap-1 md:gap-2">
-        <LanguageSelector />
-        <ThemeToggle />
+        {!isEmployee && (
+          <>
+            <LanguageSelector />
+            <ThemeToggle />
+          </>
+        )}
 
         {(role === 'agent' || role === 'manager' || role === 'admin') && (
           <Button variant="ghost" size="icon" onClick={() => navigate('/ai-chat')} className="hidden md:flex">
@@ -394,7 +480,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
           <Plus className="h-5 w-5" />
         </Button>
 
-        {/* Notifications */}
+        {!isEmployee && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="relative">
@@ -447,6 +533,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
             </ScrollArea>
           </DropdownMenuContent>
         </DropdownMenu>
+        )}
       </div>
     </motion.header>
   );

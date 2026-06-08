@@ -76,7 +76,15 @@ const CHAT_BACKGROUNDS = [
   },
 ];
 
-const getAvatarUrl = (profile: any) => profile?.avatarUrl || profile?.avatar_url || '';
+const getAvatarUrl = (profile: any) =>
+  profile?.avatarUrl ||
+  profile?.avatar_url ||
+  profile?.avatar ||
+  profile?.photoUrl ||
+  profile?.photo_url ||
+  profile?.imageUrl ||
+  profile?.image_url ||
+  '';
 const getProfileUserId = (profile: any) => profile?.userId || profile?.user_id;
 const getMemberUserId = (member: any) => member?.user_id || member?.userId;
 const getMessageType = (message: any) => message?.message_type || message?.messageType || 'text';
@@ -115,10 +123,20 @@ export default function InternalChat() {
   const audioChunksRef = useRef<BlobPart[]>([]);
   const recordingStartedAtRef = useRef<number>(0);
   const userId = user?.id;
+  const normalizeChatProfile = (p: any) => p ? {
+    ...p,
+    userId: getProfileUserId(p),
+    user_id: getProfileUserId(p),
+    avatarUrl: getAvatarUrl(p),
+    avatar_url: getAvatarUrl(p),
+  } : p;
 
   const { data: profiles = [] } = useQuery({
     queryKey: ['chat-profiles'],
-    queryFn: () => api.getProfiles(),
+    queryFn: async () => {
+      const data = await api.getProfiles();
+      return (data || []).map(normalizeChatProfile);
+    },
   });
 
   const { data: rooms = [], refetch: refetchRooms } = useQuery({
@@ -162,11 +180,7 @@ export default function InternalChat() {
   useEffect(() => {
     if (!profile?.user_id) return;
     queryClient.setQueryData<any[]>(['chat-profiles'], (currentProfiles = []) => {
-      const normalizedProfile = {
-        ...profile,
-        userId: profile.user_id,
-        avatarUrl: profile.avatar_url,
-      };
+      const normalizedProfile = normalizeChatProfile(profile);
       const withoutOwnProfile = currentProfiles.filter((item: any) => getProfileUserId(item) !== profile.user_id);
       return [normalizedProfile, ...withoutOwnProfile];
     });

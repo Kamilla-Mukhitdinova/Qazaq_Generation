@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, desc, sql, and, or, gte } from 'drizzle-orm';
+import { eq, desc, sql, and, or, gte, inArray } from 'drizzle-orm';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -283,6 +283,31 @@ router.patch('/reports/:id', async (req, res) => {
   const [row] = await db.update(reports).set({ ...req.body, updatedAt: new Date() })
     .where(eq(reports.id, req.params.id)).returning();
   res.json(row);
+});
+router.delete('/reports', async (req, res) => {
+  const ids = Array.isArray(req.body?.ids)
+    ? req.body.ids.filter((id: unknown): id is string => typeof id === 'string' && id.trim().length > 0)
+    : [];
+
+  if (ids.length === 0) return res.status(400).json({ error: 'Не выбраны отчёты для удаления' });
+
+  const canDeleteAll = ['admin', 'manager'].includes(req.user!.role);
+  const where = canDeleteAll
+    ? inArray(reports.id, ids)
+    : and(inArray(reports.id, ids), eq(reports.authorId, req.user!.userId));
+  const deleted = await db.delete(reports).where(where).returning({ id: reports.id });
+
+  res.json({ success: true, deleted: deleted.length });
+});
+router.delete('/reports/:id', async (req, res) => {
+  const canDeleteAll = ['admin', 'manager'].includes(req.user!.role);
+  const where = canDeleteAll
+    ? eq(reports.id, req.params.id)
+    : and(eq(reports.id, req.params.id), eq(reports.authorId, req.user!.userId));
+  const deleted = await db.delete(reports).where(where).returning({ id: reports.id });
+
+  if (deleted.length === 0) return res.status(404).json({ error: 'Отчёт не найден' });
+  res.json({ success: true });
 });
 
 // --- Performance Scores ---

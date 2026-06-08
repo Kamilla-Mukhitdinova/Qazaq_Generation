@@ -32,6 +32,7 @@ function buildAllowedOrigins() {
 
 const allowedOrigins = buildAllowedOrigins();
 const localDevOriginPattern = /^https?:\/\/(localhost|127\.0\.0\.1|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d{4,5}$/;
+const vercelOriginPattern = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i;
 
 app.use(helmet());
 app.use(cors({
@@ -40,6 +41,7 @@ app.use(cors({
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
     if (localDevOriginPattern.test(origin)) return callback(null, true);
+    if (vercelOriginPattern.test(origin)) return callback(null, true);
     return callback(new Error(`CORS blocked for origin: ${origin}`));
   },
   credentials: true,

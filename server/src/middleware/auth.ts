@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { users } from '../db/schema.js';
+import { userRoles, users } from '../db/schema.js';
 
 export interface AuthPayload {
   userId: string;
@@ -32,10 +32,12 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     if (!user) {
       return res.status(401).json({ error: 'Пользователь не найден. Войдите заново.' });
     }
+    const [roleRow] = await db.select().from(userRoles).where(eq(userRoles.userId, payload.userId)).limit(1);
 
     req.user = {
       ...payload,
       email: user.email,
+      role: roleRow?.role ?? 'employee',
     };
     next();
   } catch {

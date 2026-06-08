@@ -22,6 +22,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 type TicketStatus = 'new' | 'assigned' | 'in_progress' | 'resolved' | 'closed' | 'reopened';
 type TicketPriority = 'low' | 'medium' | 'high' | 'critical';
+type TicketSection = 'all' | 'problems' | 'changes' | 'planning' | 'periodic';
 
 interface TicketRow {
   id: string;
@@ -34,6 +35,10 @@ interface TicketRow {
   requester_name?: string;
   assignee_name?: string;
   category_name?: string;
+  is_planned?: boolean;
+  planned_start_at?: string | null;
+  planned_end_at?: string | null;
+  planning_note?: string | null;
 }
 
 const pick = <T,>(obj: any, ...keys: string[]): T | undefined => {
@@ -49,12 +54,72 @@ const rowVariants = {
   exit: { opacity: 0, x: 20 }
 };
 
+const sectionLabelKeys: Record<TicketSection, string> = {
+  all: 'ticket.list.title',
+  problems: 'nav.support.problems',
+  changes: 'nav.support.changes',
+  planning: 'nav.support.planning',
+  periodic: 'nav.support.periodicTickets',
+};
+
+const sectionKeywordMap: Record<Exclude<TicketSection, 'all'>, string[]> = {
+  problems: ['problem', 'issue', 'incident', 'error', 'fail', 'broken', 'проблем', 'ошиб', 'сбой', 'не работает', 'сломал', 'настройк'],
+  changes: ['change', 'update', 'upgrade', 'release', 'измен', 'обнов', 'релиз'],
+  planning: ['plan', 'planned', 'schedule', 'план', 'заплан', 'плановое'],
+  periodic: ['periodic', 'regular', 'recurring ticket', 'период', 'регуляр'],
+};
+
+const normalizeSection = (value: string | null): TicketSection => {
+  const allowed: TicketSection[] = ['all', 'problems', 'changes', 'planning', 'periodic'];
+  return allowed.includes(value as TicketSection) ? value as TicketSection : 'all';
+};
+
+const getSectionSearchText = (ticket: TicketRow) => [
+  ticket.title,
+  ticket.category_name,
+  ticket.status,
+  ticket.priority,
+].filter(Boolean).join(' ').toLowerCase();
+
+const isPeriodicTicket = (ticket: TicketRow) => {
+  const searchableText = getSectionSearchText(ticket);
+  return sectionKeywordMap.periodic.some(keyword => searchableText.includes(keyword));
+};
+
+const matchesSection = (ticket: TicketRow, section: TicketSection) => {
+  if (section === 'all') return true;
+  if (section === 'planning') {
+    return Boolean(ticket.is_planned || ticket.planned_start_at) && !isPeriodicTicket(ticket);
+  }
+
+  const searchableText = getSectionSearchText(ticket);
+
+  return sectionKeywordMap[section].some(keyword => searchableText.includes(keyword));
+};
+
+const formatTicketDate = (ticket: TicketRow, ticketSection: TicketSection) => {
+  if (ticketSection === 'planning' && ticket.planned_start_at) {
+    const start = new Date(ticket.planned_start_at);
+    const end = ticket.planned_end_at ? new Date(ticket.planned_end_at) : null;
+    if (!Number.isNaN(start.getTime())) {
+      const startText = format(start, 'dd.MM.yyyy HH:mm');
+      if (end && !Number.isNaN(end.getTime())) {
+        return `${startText} - ${format(end, 'HH:mm')}`;
+      }
+      return startText;
+    }
+  }
+
+  return format(new Date(ticket.created_at), 'dd.MM.yyyy');
+};
+
 export default function TicketsList() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { t } = useLanguage();
   const { role } = useAuth();
   const { toast } = useToast();
+  const isEmployee = role === 'employee';
 
   const [tickets, setTickets] = useState<TicketRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,10 +130,17 @@ export default function TicketsList() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const canDeleteTickets = role === 'admin' || role === 'manager';
+  const ticketSection = normalizeSection(searchParams.get('type'));
+  const sectionTitle = t(sectionLabelKeys[ticketSection]);
 
   useEffect(() => {
     fetchTickets();
-  }, [statusFilter, priorityFilter]);
+  }, [statusFilter, priorityFilter, ticketSection]);
+
+  useEffect(() => {
+    setSelectedIds([]);
+    setSearchQuery(searchParams.get('search') || '');
+  }, [searchParams]);
 
   const fetchTickets = async () => {
     setLoading(true);
@@ -97,6 +169,8 @@ export default function TicketsList() {
           const assigneeId = pick<string | null>(ticket, 'assignee_id', 'assigneeId') || null;
           const categoryId = pick<string | null>(ticket, 'category_id', 'categoryId') || null;
           const createdAt = pick<string>(ticket, 'created_at', 'createdAt') || new Date().toISOString();
+          const plannedStartAt = pick<string | null>(ticket, 'planned_start_at', 'plannedStartAt') || null;
+          const plannedEndAt = pick<string | null>(ticket, 'planned_end_at', 'plannedEndAt') || null;
           return {
             id: ticket.id,
             title: ticket.title,
@@ -108,6 +182,10 @@ export default function TicketsList() {
             requester_name: profileMap.get(requesterId) || t('common.unknownUser'),
             assignee_name: assigneeId ? profileMap.get(assigneeId) || t('common.unknownUser') : undefined,
             category_name: categoryId ? categoryMap.get(categoryId) : undefined,
+            is_planned: Boolean(pick<boolean>(ticket, 'is_planned', 'isPlanned')),
+            planned_start_at: plannedStartAt,
+            planned_end_at: plannedEndAt,
+            planning_note: pick<string | null>(ticket, 'planning_note', 'planningNote') || null,
           };
         }));
       } else {
@@ -120,24 +198,31 @@ export default function TicketsList() {
     }
   };
 
-  const filteredTickets = tickets.filter(ticket =>
+  const sectionTickets = tickets.filter(ticket => matchesSection(ticket, ticketSection));
+  const filteredTickets = sectionTickets.filter(ticket =>
     !searchQuery ||
     ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ticket.requester_name?.toLowerCase().includes(searchQuery.toLowerCase())
+    ticket.requester_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    ticket.category_name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
   const selectedCount = selectedIds.length;
   const visibleIds = filteredTickets.map(ticket => ticket.id);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id));
-  const activeCount = tickets.filter(ticket => !['resolved', 'closed'].includes(ticket.status)).length;
-  const highPriorityCount = tickets.filter(ticket => ['high', 'critical'].includes(ticket.priority)).length;
-  const unassignedCount = tickets.filter(ticket => !ticket.assignee_id).length;
-  const completedCount = tickets.filter(ticket => ['resolved', 'closed'].includes(ticket.status)).length;
-  const ticketStats = [
+  const activeCount = sectionTickets.filter(ticket => !['resolved', 'closed'].includes(ticket.status)).length;
+  const highPriorityCount = sectionTickets.filter(ticket => ['high', 'critical'].includes(ticket.priority)).length;
+  const unassignedCount = sectionTickets.filter(ticket => !ticket.assignee_id).length;
+  const completedCount = sectionTickets.filter(ticket => ['resolved', 'closed'].includes(ticket.status)).length;
+  const fullTicketStats = [
     { label: t('ticket.list.stats.active'), value: activeCount, icon: Clock3, color: 'bg-blue-500/10 text-blue-600' },
     { label: t('ticket.list.stats.urgent'), value: highPriorityCount, icon: AlertCircle, color: 'bg-orange-500/10 text-orange-600' },
     { label: t('ticket.list.stats.unassigned'), value: unassignedCount, icon: UserRound, color: 'bg-purple-500/10 text-purple-600' },
     { label: t('ticket.list.stats.done'), value: completedCount, icon: CheckCircle2, color: 'bg-emerald-500/10 text-emerald-600' },
   ];
+  const employeeTicketStats = [
+    { label: 'В работе', value: activeCount, icon: Clock3, color: 'bg-blue-500/10 text-blue-600' },
+    { label: 'Завершено', value: completedCount, icon: CheckCircle2, color: 'bg-emerald-500/10 text-emerald-600' },
+  ];
+  const ticketStats = isEmployee ? employeeTicketStats : fullTicketStats;
 
   const statusColors: Record<string, string> = {
     new: 'bg-blue-500/10 text-blue-500',
@@ -219,10 +304,12 @@ export default function TicketsList() {
     <motion.div className="space-y-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
       <motion.div className="flex items-center justify-between" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}>
         <div>
-          <h1 className="text-2xl font-bold">{t('ticket.list.title')}</h1>
-          <p className="text-muted-foreground">{t('ticket.list.subtitle')}</p>
+          <h1 className="text-2xl font-bold">{isEmployee ? 'Мои заявки' : sectionTitle}</h1>
+          <p className="text-muted-foreground">
+            {isEmployee ? 'Отслеживайте статус своих обращений в поддержку' : t('ticket.list.subtitle')}
+          </p>
           <p className="mt-2 text-sm text-muted-foreground">
-            {filteredTickets.length} {t('ticket.list.visibleOf')} {tickets.length}
+            {filteredTickets.length} {t('ticket.list.visibleOf')} {sectionTickets.length}
           </p>
         </div>
         <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
@@ -231,7 +318,7 @@ export default function TicketsList() {
       </motion.div>
 
       <motion.div
-        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+        className={isEmployee ? 'grid gap-4 sm:grid-cols-2' : 'grid gap-4 sm:grid-cols-2 xl:grid-cols-4'}
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.15 }}
@@ -270,6 +357,7 @@ export default function TicketsList() {
                   <SelectItem value="closed">{t('ticket.status.closed')}</SelectItem>
                 </SelectContent>
               </Select>
+              {!isEmployee && (
               <Select value={priorityFilter} onValueChange={setPriorityFilter}>
                 <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder={t('ticket.list.header.priority')} /></SelectTrigger>
                 <SelectContent>
@@ -280,6 +368,7 @@ export default function TicketsList() {
                   <SelectItem value="critical">{t('ticket.priority.critical')}</SelectItem>
                 </SelectContent>
               </Select>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -335,10 +424,10 @@ export default function TicketsList() {
                       </TableHead>
                     )}
                     <TableHead>{t('ticket.list.header.title')}</TableHead>
-                    <TableHead>{t('ticket.list.header.requester')}</TableHead>
+                    {!isEmployee && <TableHead>{t('ticket.list.header.requester')}</TableHead>}
                     <TableHead>{t('ticket.list.header.status')}</TableHead>
-                    <TableHead>{t('ticket.list.header.priority')}</TableHead>
-                    <TableHead>{t('ticket.list.header.assignee')}</TableHead>
+                    {!isEmployee && <TableHead>{t('ticket.list.header.priority')}</TableHead>}
+                    {!isEmployee && <TableHead>{t('ticket.list.header.assignee')}</TableHead>}
                     <TableHead>{t('ticket.list.header.date')}</TableHead>
                     {canDeleteTickets && <TableHead className="w-[72px] text-right">Действия</TableHead>}
                   </TableRow>
@@ -358,11 +447,11 @@ export default function TicketsList() {
                           </TableCell>
                         )}
                         <TableCell className="font-medium max-w-[300px] truncate">{getDisplayTicketTitle(ticket.title)}</TableCell>
-                        <TableCell>{ticket.requester_name}</TableCell>
+                        {!isEmployee && <TableCell>{ticket.requester_name}</TableCell>}
                         <TableCell><Badge variant="secondary" className={statusColors[ticket.status]}>{getStatusLabel(ticket.status)}</Badge></TableCell>
-                        <TableCell><Badge variant="secondary" className={priorityColors[ticket.priority]}>{getPriorityLabel(ticket.priority)}</Badge></TableCell>
-                        <TableCell>{ticket.assignee_name || '-'}</TableCell>
-                        <TableCell className="text-muted-foreground">{format(new Date(ticket.created_at), 'dd.MM.yyyy')}</TableCell>
+                        {!isEmployee && <TableCell><Badge variant="secondary" className={priorityColors[ticket.priority]}>{getPriorityLabel(ticket.priority)}</Badge></TableCell>}
+                        {!isEmployee && <TableCell>{ticket.assignee_name || '-'}</TableCell>}
+                        <TableCell className="text-muted-foreground">{formatTicketDate(ticket, ticketSection)}</TableCell>
                         {canDeleteTickets && (
                           <TableCell className="text-right">
                             <Button

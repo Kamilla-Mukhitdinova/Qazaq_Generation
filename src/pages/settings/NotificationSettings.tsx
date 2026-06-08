@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Bell, BellRing, Mail, Smartphone, Loader2, Save, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 interface ChannelPrefs { in_app: boolean; email: boolean; push: boolean; }
 interface AllPrefs { status_change: ChannelPrefs; assignment: ChannelPrefs; comment: ChannelPrefs; sla_breach: ChannelPrefs; }
@@ -29,7 +28,6 @@ const channels = [
 export default function NotificationSettings() {
   const { toast } = useToast();
   const { t } = useLanguage();
-  const push = usePushNotifications();
   const [prefs, setPrefs] = useState<AllPrefs>(defaultPrefs);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -77,21 +75,6 @@ export default function NotificationSettings() {
         <h1 className="text-2xl font-bold flex items-center gap-2"><BellRing className="h-6 w-6" />{t('notifSettings.title')}</h1>
         <p className="text-muted-foreground mt-1">{t('notifSettings.subtitle')}</p>
       </div>
-
-      {push.isSupported && (
-        <Card><CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10"><Smartphone className="h-5 w-5 text-primary" /></div>
-              <div>
-                <p className="font-medium text-sm">Browser Push</p>
-                <p className="text-xs text-muted-foreground">{push.isSubscribed ? t('notifSettings.pushEnabled') : t('notifSettings.pushDisabled')}</p>
-              </div>
-            </div>
-            <Switch checked={push.isSubscribed} disabled={push.loading} onCheckedChange={checked => checked ? push.subscribe() : push.unsubscribe()} />
-          </div>
-        </CardContent></Card>
-      )}
 
       <Card>
         <CardHeader>

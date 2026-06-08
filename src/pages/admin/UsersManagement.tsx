@@ -43,7 +43,13 @@ export default function UsersManagement() {
   };
 
   const handleUpdateUser = async () => {
-    if (!editingUser) return; setSaving(true);
+    if (!editingUser) return;
+    if (editingUser.role === 'agent' && !editingUser.group_id) {
+      toast({ title: t('common.error'), description: 'Для инженера выберите линию / группу', variant: 'destructive' });
+      return;
+    }
+
+    setSaving(true);
     try {
       await api.updateUser(editingUser.user_id, { name: editingUser.name, departmentId: editingUser.department_id, groupId: editingUser.group_id });
       await api.updateUserRole(editingUser.user_id, editingUser.role);
@@ -71,7 +77,7 @@ export default function UsersManagement() {
                   <DialogContent><DialogHeader><DialogTitle>{t('admin.users.editUser')}</DialogTitle><DialogDescription>{t('admin.users.editDesc')}</DialogDescription></DialogHeader>
                     {editingUser && <div className="space-y-4">
                       <div className="space-y-2"><Label>{t('admin.users.name')}</Label><Input value={editingUser.name} onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>{t('admin.users.role')}</Label><Select value={editingUser.role} onValueChange={(v: AppRole) => setEditingUser({ ...editingUser, role: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="employee">{t('role.employee')}</SelectItem><SelectItem value="agent">{t('role.agent')}</SelectItem><SelectItem value="manager">{t('role.manager')}</SelectItem><SelectItem value="admin">{t('role.admin')}</SelectItem></SelectContent></Select></div>
+                      <div className="space-y-2"><Label>{t('admin.users.role')}</Label><Select value={editingUser.role} onValueChange={(v: AppRole) => setEditingUser({ ...editingUser, role: v, group_id: v === 'agent' ? editingUser.group_id : null })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="employee">{t('role.employee')}</SelectItem><SelectItem value="agent">{t('role.agent')}</SelectItem><SelectItem value="manager">{t('role.manager')}</SelectItem><SelectItem value="admin">{t('role.admin')}</SelectItem></SelectContent></Select></div>
                       <div className="space-y-2"><Label>{t('admin.users.department')}</Label><Select value={editingUser.department_id || ''} onValueChange={(v) => setEditingUser({ ...editingUser, department_id: v || null })}><SelectTrigger><SelectValue placeholder={t('common.select')} /></SelectTrigger><SelectContent>{departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent></Select></div>
                       <div className="space-y-2"><Label>{t('admin.users.group')}</Label><Select value={editingUser.group_id || ''} onValueChange={(v) => setEditingUser({ ...editingUser, group_id: v || null })}><SelectTrigger><SelectValue placeholder={t('common.select')} /></SelectTrigger><SelectContent>{groups.filter(g => !editingUser.department_id || g.department_id === editingUser.department_id).map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent></Select></div>
                     </div>}

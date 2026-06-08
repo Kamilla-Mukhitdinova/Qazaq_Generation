@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, Loader2, Send, User, Calendar, Tag, Paperclip, Download, Trash2, FileText, Bot, CircleDot, UserCheck, PlayCircle, CheckCircle2, Archive, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Loader2, Send, User, Calendar, CalendarClock, Tag, Paperclip, Download, Trash2, FileText, Bot, CircleDot, UserCheck, PlayCircle, CheckCircle2, Archive, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
 import TicketKBLinks from '@/components/ticket/TicketKBLinks';
 import ReactMarkdown from 'react-markdown';
@@ -27,6 +27,10 @@ interface TicketDetailData {
   created_at: string; updated_at: string;
   requester_id: string; assignee_id: string | null; category_id: string | null;
   requester_name?: string; assignee_name?: string; category_name?: string;
+  is_planned?: boolean;
+  planned_start_at?: string | null;
+  planned_end_at?: string | null;
+  planning_note?: string | null;
 }
 
 interface Comment {
@@ -129,6 +133,8 @@ export default function TicketDetail() {
       const categoryId = pick<string | null>(data, 'category_id', 'categoryId') || null;
       const createdAt = pick<string>(data, 'created_at', 'createdAt') || new Date().toISOString();
       const updatedAt = pick<string>(data, 'updated_at', 'updatedAt') || createdAt;
+      const plannedStartAt = pick<string | null>(data, 'planned_start_at', 'plannedStartAt') || null;
+      const plannedEndAt = pick<string | null>(data, 'planned_end_at', 'plannedEndAt') || null;
       const category = (categories || []).find((c: any) => c.id === categoryId);
       const requesterName = profileMap.get(requesterId) || getProfileName(data.requester) || t('ticket.detail.unknown');
       const assigneeName = assigneeId
@@ -148,6 +154,10 @@ export default function TicketDetail() {
         requester_name: requesterName,
         assignee_name: assigneeName,
         category_name: category?.name,
+        is_planned: Boolean(pick<boolean>(data, 'is_planned', 'isPlanned')),
+        planned_start_at: plannedStartAt,
+        planned_end_at: plannedEndAt,
+        planning_note: pick<string | null>(data, 'planning_note', 'planningNote') || null,
       });
     } catch (error) {
       console.error('Error fetching ticket:', error);
@@ -381,6 +391,39 @@ export default function TicketDetail() {
             <CardHeader><CardTitle>{t('ticket.detail.description')}</CardTitle></CardHeader>
             <CardContent><p className="text-muted-foreground whitespace-pre-wrap">{ticket.description || t('ticket.detail.noDescription')}</p></CardContent>
           </Card>
+
+          {(ticket.is_planned || ticket.planned_start_at) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CalendarClock className="h-5 w-5" />
+                  {t('ticket.detail.planning')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {ticket.planned_start_at && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t('ticket.detail.plannedStart')}</p>
+                      <p className="text-sm font-medium">{format(new Date(ticket.planned_start_at), 'dd.MM.yyyy HH:mm')}</p>
+                    </div>
+                    {ticket.planned_end_at && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">{t('ticket.detail.plannedEnd')}</p>
+                        <p className="text-sm font-medium">{format(new Date(ticket.planned_end_at), 'dd.MM.yyyy HH:mm')}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {ticket.planning_note && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t('ticket.detail.planningNote')}</p>
+                    <p className="text-sm whitespace-pre-wrap">{ticket.planning_note}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Attachments */}
           <Card>

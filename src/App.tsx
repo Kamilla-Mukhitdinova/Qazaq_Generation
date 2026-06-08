@@ -4,7 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Suspense, lazy, useEffect, useState } from "react";
-import { AuthProvider } from "@/hooks/useAuth";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 
@@ -52,8 +52,28 @@ const pageFallback = (
   </div>
 );
 
+function RequireRoles({ roles, children }: { roles: string[]; children: JSX.Element }) {
+  const { role, loading } = useAuth();
+
+  if (loading) return pageFallback;
+  if (!role || !roles.includes(role)) {
+    return <Navigate to={role === 'employee' ? '/tickets' : '/dashboard'} replace />;
+  }
+
+  return children;
+}
+
+function RoleRedirect() {
+  const { role, loading } = useAuth();
+
+  if (loading) return pageFallback;
+
+  return <Navigate to={role === 'employee' ? '/tickets' : '/dashboard'} replace />;
+}
+
 function DeferredAIFloatingChat() {
   const [ready, setReady] = useState(false);
+  const { role, loading } = useAuth();
 
   useEffect(() => {
     const idleCallback = window.requestIdleCallback || ((callback: IdleRequestCallback) => window.setTimeout(callback, 1500));
@@ -63,7 +83,7 @@ function DeferredAIFloatingChat() {
     return () => cancelIdleCallback(handle);
   }, []);
 
-  if (!ready) return null;
+  if (!ready || loading) return null;
 
   return (
     <Suspense fallback={null}>
@@ -90,46 +110,46 @@ const App = () => {
                     
                     {/* Protected routes */}
                     <Route element={<AppLayout />}>
-                      <Route path="/dashboard" element={<Dashboard />} />
+                      <Route path="/dashboard" element={<RequireRoles roles={['agent', 'manager', 'admin']}><Dashboard /></RequireRoles>} />
                       <Route path="/tickets" element={<TicketsList />} />
                       <Route path="/tickets/new" element={<NewTicket />} />
                       <Route path="/tickets/:id" element={<TicketDetail />} />
-                      <Route path="/profile" element={<Profile />} />
-                      <Route path="/ai-chat" element={<AIChat />} />
-                      <Route path="/notifications" element={<NotificationsList />} />
-                      <Route path="/ppr" element={<PPRPlans />} />
-                      <Route path="/reports" element={<Reports />} />
-                      <Route path="/reports/manage" element={<ReportsManagement />} />
-                      <Route path="/performance" element={<EmployeePerformance />} />
-                      <Route path="/assets" element={<AssetManagement />} />
-                      <Route path="/chat" element={<InternalChat />} />
-                      <Route path="/meetings" element={<VideoConferences />} />
-                      <Route path="/meet/:meetingId" element={<VideoConferences />} />
-                      <Route path="/knowledge" element={<KnowledgeBase />} />
-                      <Route path="/knowledge/:id" element={<KnowledgeBaseArticle />} />
-                      <Route path="/documents" element={<Documents />} />
+                      <Route path="/profile" element={<RequireRoles roles={['agent', 'manager', 'admin']}><Profile /></RequireRoles>} />
+                      <Route path="/ai-chat" element={<RequireRoles roles={['agent', 'manager', 'admin']}><AIChat /></RequireRoles>} />
+                      <Route path="/notifications" element={<RequireRoles roles={['agent', 'manager', 'admin']}><NotificationsList /></RequireRoles>} />
+                      <Route path="/ppr" element={<RequireRoles roles={['manager', 'admin']}><PPRPlans /></RequireRoles>} />
+                      <Route path="/reports" element={<RequireRoles roles={['manager', 'admin']}><Reports /></RequireRoles>} />
+                      <Route path="/reports/manage" element={<RequireRoles roles={['manager', 'admin']}><ReportsManagement /></RequireRoles>} />
+                      <Route path="/performance" element={<RequireRoles roles={['manager', 'admin']}><EmployeePerformance /></RequireRoles>} />
+                      <Route path="/assets" element={<RequireRoles roles={['manager', 'admin']}><AssetManagement /></RequireRoles>} />
+                      <Route path="/chat" element={<RequireRoles roles={['agent', 'manager', 'admin']}><InternalChat /></RequireRoles>} />
+                      <Route path="/meetings" element={<RequireRoles roles={['agent', 'manager', 'admin']}><VideoConferences /></RequireRoles>} />
+                      <Route path="/meet/:meetingId" element={<RequireRoles roles={['agent', 'manager', 'admin']}><VideoConferences /></RequireRoles>} />
+                      <Route path="/knowledge" element={<RequireRoles roles={['agent', 'manager', 'admin']}><KnowledgeBase /></RequireRoles>} />
+                      <Route path="/knowledge/:id" element={<RequireRoles roles={['agent', 'manager', 'admin']}><KnowledgeBaseArticle /></RequireRoles>} />
+                      <Route path="/documents" element={<RequireRoles roles={['agent', 'manager', 'admin']}><Documents /></RequireRoles>} />
                       {/* Admin routes */}
-                      <Route path="/admin/users" element={<AdministrationSection />} />
-                      <Route path="/admin/groups" element={<AdministrationSection />} />
-                      <Route path="/admin/organizations" element={<AdministrationSection />} />
-                      <Route path="/admin/rules" element={<AdministrationSection />} />
-                      <Route path="/admin/directories" element={<AdministrationSection />} />
-                      <Route path="/admin/profiles" element={<AdministrationSection />} />
-                      <Route path="/admin/notification-queue" element={<AdministrationSection />} />
-                      <Route path="/admin/logs" element={<AdministrationSection />} />
-                      <Route path="/admin/equipment" element={<AdministrationSection />} />
-                      <Route path="/admin/glpi-inventory" element={<AdministrationSection />} />
-                      <Route path="/admin/forms" element={<AdministrationSection />} />
+                      <Route path="/admin/users" element={<RequireRoles roles={['admin']}><AdministrationSection /></RequireRoles>} />
+                      <Route path="/admin/groups" element={<RequireRoles roles={['admin']}><AdministrationSection /></RequireRoles>} />
+                      <Route path="/admin/organizations" element={<RequireRoles roles={['admin']}><AdministrationSection /></RequireRoles>} />
+                      <Route path="/admin/rules" element={<RequireRoles roles={['admin']}><AdministrationSection /></RequireRoles>} />
+                      <Route path="/admin/directories" element={<RequireRoles roles={['admin']}><AdministrationSection /></RequireRoles>} />
+                      <Route path="/admin/profiles" element={<RequireRoles roles={['admin']}><AdministrationSection /></RequireRoles>} />
+                      <Route path="/admin/notification-queue" element={<RequireRoles roles={['admin']}><AdministrationSection /></RequireRoles>} />
+                      <Route path="/admin/logs" element={<RequireRoles roles={['admin']}><AdministrationSection /></RequireRoles>} />
+                      <Route path="/admin/equipment" element={<RequireRoles roles={['admin']}><AdministrationSection /></RequireRoles>} />
+                      <Route path="/admin/glpi-inventory" element={<RequireRoles roles={['admin']}><AdministrationSection /></RequireRoles>} />
+                      <Route path="/admin/forms" element={<RequireRoles roles={['admin']}><AdministrationSection /></RequireRoles>} />
                       {/* Existing CRUD pages kept for direct access */}
-                      <Route path="/admin/users/manage" element={<UsersManagement />} />
-                      <Route path="/admin/departments" element={<DepartmentsManagement />} />
-                      <Route path="/admin/categories" element={<CategoriesManagement />} />
-                      <Route path="/admin/sla" element={<SLAManagement />} />
+                      <Route path="/admin/users/manage" element={<RequireRoles roles={['admin']}><UsersManagement /></RequireRoles>} />
+                      <Route path="/admin/departments" element={<RequireRoles roles={['admin']}><DepartmentsManagement /></RequireRoles>} />
+                      <Route path="/admin/categories" element={<RequireRoles roles={['admin']}><CategoriesManagement /></RequireRoles>} />
+                      <Route path="/admin/sla" element={<RequireRoles roles={['admin']}><SLAManagement /></RequireRoles>} />
                       
                       {/* Settings */}
-                      <Route path="/settings/notifications" element={<NotificationSettings />} />
-                      <Route path="/settings/2fa" element={<TwoFactorSetup />} />
-                      <Route path="/settings/authentication" element={<TwoFactorSetup />} />
+                      <Route path="/settings/notifications" element={<RequireRoles roles={['agent', 'manager', 'admin']}><NotificationSettings /></RequireRoles>} />
+                      <Route path="/settings/2fa" element={<RequireRoles roles={['agent', 'manager', 'admin']}><TwoFactorSetup /></RequireRoles>} />
+                      <Route path="/settings/authentication" element={<RequireRoles roles={['agent', 'manager', 'admin']}><TwoFactorSetup /></RequireRoles>} />
                       <Route path="/settings/dropdowns" element={<Navigate to="/admin/categories" replace />} />
                       <Route path="/settings/components" element={<Navigate to="/assets?section=devices" replace />} />
                       <Route path="/settings/service-levels" element={<Navigate to="/admin/sla" replace />} />
@@ -143,7 +163,7 @@ const App = () => {
                     </Route>
 
                     {/* Redirects */}
-                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="/" element={<RoleRedirect />} />
                     
                     {/* 404 */}
                     <Route path="*" element={<NotFound />} />

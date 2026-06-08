@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { db } from '../db/index.js';
-import { tickets, ticketComments, ticketHistory, ticketSla, ticketAttachments, ticketKbLinks, profiles, slaPolicies, users } from '../db/schema.js';
+import { tickets, ticketComments, ticketHistory, ticketSla, ticketAttachments, ticketKbLinks, profiles, slaPolicies, users, groups, userRoles } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { notifyUser, notifyUsers } from '../services/notificationService.js';
 
@@ -24,6 +24,31 @@ const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
 
 const router = Router();
 router.use(authMiddleware);
+
+const findFirstLineRouting = async () => {
+  const [firstLineGroup] = await db.select({ id: groups.id })
+    .from(groups)
+    .where(or(
+      ilike(groups.name, '%1 линия%'),
+      ilike(groups.name, '%1-линия%'),
+      ilike(groups.name, '%перв%'),
+      ilike(groups.name, '%first line%'),
+    ))
+    .limit(1);
+
+  if (!firstLineGroup) return { groupId: null, assigneeId: null };
+
+  const [firstLineAgent] = await db.select({ userId: profiles.userId })
+    .from(profiles)
+    .innerJoin(userRoles, and(eq(userRoles.userId, profiles.userId), eq(userRoles.role, 'agent')))
+    .where(eq(profiles.groupId, firstLineGroup.id))
+    .limit(1);
+
+  return {
+    groupId: firstLineGroup.id,
+    assigneeId: firstLineAgent?.userId || null,
+  };
+};
 
 const deleteTicketWithRelations = async (ticketId: string) => {
   const [ticket] = await db.select().from(tickets).where(eq(tickets.id, ticketId)).limit(1);
@@ -115,12 +140,38 @@ router.get('/:id', async (req, res) => {
 // Create ticket
 router.post('/', async (req, res) => {
   try {
-    const { title, description, priority, categoryId, groupId, requesterId, assigneeId } = req.body;
+    const {
+      title,
+      description,
+      priority,
+      categoryId,
+      groupId,
+      requesterId,
+      assigneeId,
+      isPlanned,
+      plannedStartAt,
+      plannedEndAt,
+      planningNote,
+    } = req.body;
     const ticketPriority = priority || 'medium';
     const canChooseRequester = ['agent', 'admin', 'manager'].includes(req.user!.role);
     const canChooseAssignee = canChooseRequester;
     const ticketRequesterId = canChooseRequester && requesterId ? requesterId : req.user!.userId;
-    const ticketAssigneeId = canChooseAssignee && assigneeId ? assigneeId : null;
+    const firstLineRouting = canChooseAssignee ? { groupId: null, assigneeId: null } : await findFirstLineRouting();
+    const ticketGroupId = canChooseAssignee ? groupId || null : firstLineRouting.groupId;
+    const ticketAssigneeId = canChooseAssignee && assigneeId ? assigneeId : firstLineRouting.assigneeId;
+    const plannedStart = isPlanned && plannedStartAt ? new Date(plannedStartAt) : null;
+    const plannedEnd = isPlanned && plannedEndAt ? new Date(plannedEndAt) : null;
+
+    if (isPlanned && (!plannedStart || Number.isNaN(plannedStart.getTime()))) {
+      return res.status(400).json({ error: 'Укажите дату и время планирования' });
+    }
+    if (plannedEnd && Number.isNaN(plannedEnd.getTime())) {
+      return res.status(400).json({ error: 'Некорректное время окончания' });
+    }
+    if (plannedStart && plannedEnd && plannedEnd <= plannedStart) {
+      return res.status(400).json({ error: 'Время окончания должно быть позже времени начала' });
+    }
 
     const [requester] = await db.select({ id: users.id }).from(users).where(eq(users.id, ticketRequesterId)).limit(1);
     if (!requester) return res.status(400).json({ error: 'Заявитель не найден' });
@@ -134,9 +185,13 @@ router.post('/', async (req, res) => {
       description,
       priority: ticketPriority,
       categoryId,
-      groupId,
+      groupId: ticketGroupId,
       requesterId: ticketRequesterId,
       assigneeId: ticketAssigneeId,
+      isPlanned: Boolean(isPlanned),
+      plannedStartAt: plannedStart,
+      plannedEndAt: plannedEnd,
+      planningNote: isPlanned ? planningNote || null : null,
       status: ticketAssigneeId ? 'assigned' : 'new',
     }).returning();
 

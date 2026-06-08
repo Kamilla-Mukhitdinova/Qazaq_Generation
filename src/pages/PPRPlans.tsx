@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -69,11 +70,11 @@ const normalizePlan = (plan: any): PPRPlan => ({
   created_at: pick<string>(plan, 'created_at', 'createdAt') || new Date().toISOString(),
 });
 
-const statusConfig: Record<string, { label: string; color: string; icon: typeof FileText }> = {
-  draft: { label: 'Draft', color: 'bg-muted text-muted-foreground', icon: FileText },
-  pending_approval: { label: 'Pending approval', color: 'bg-amber-500/10 text-amber-700', icon: ShieldCheck },
-  approved: { label: 'Approved', color: 'bg-green-500/10 text-green-600', icon: CheckCircle2 },
-  rejected: { label: 'Rejected', color: 'bg-red-500/10 text-red-600', icon: XCircle },
+const statusConfig: Record<string, { labelKey: string; color: string; icon: typeof FileText }> = {
+  draft: { labelKey: 'ppr.draft', color: 'bg-muted text-muted-foreground', icon: FileText },
+  pending_approval: { labelKey: 'ppr.awaitingApproval', color: 'bg-amber-500/10 text-amber-700', icon: ShieldCheck },
+  approved: { labelKey: 'ppr.approved', color: 'bg-green-500/10 text-green-600', icon: CheckCircle2 },
+  rejected: { labelKey: 'ppr.rejected', color: 'bg-red-500/10 text-red-600', icon: XCircle },
 };
 
 const signerStatusClass: Record<SignerStatus, string> = {
@@ -96,6 +97,7 @@ const NO_EXECUTOR_VALUE = 'none';
 
 export default function PPRPlans() {
   const { user, profile } = useAuth();
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedLine, setSelectedLine] = useState<PprLine | null>(null);
@@ -215,6 +217,15 @@ export default function PPRPlans() {
 
   const currentUserSigner = selectedPlan?.signers.find(signer => signer.userId === user?.id);
   const canDecide = Boolean(currentUserSigner && currentUserSigner.status === 'Pending' && selectedPlan?.status === 'pending_approval');
+  const getStatusLabel = (status: string) => t((statusConfig[status] || statusConfig.draft).labelKey);
+  const getSignerStatusLabel = (status: SignerStatus) => {
+    const labels: Record<SignerStatus, string> = {
+      Pending: t('ppr.awaitingSignature'),
+      Approved: t('ppr.approvedStatus'),
+      Rejected: t('ppr.rejected'),
+    };
+    return labels[status];
+  };
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
@@ -368,7 +379,7 @@ export default function PPRPlans() {
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Badge className={cfg.color}>{cfg.label}</Badge>
+                            <Badge className={cfg.color}>{getStatusLabel(plan.status)}</Badge>
                             <Badge variant="outline">{plan.signers.length} подписантов</Badge>
                           </div>
                         </CardContent>
@@ -402,7 +413,7 @@ export default function PPRPlans() {
                   <div><span className="text-muted-foreground">Линия:</span> <strong>Линия {selectedPlan.line}</strong></div>
                   <div><span className="text-muted-foreground">Дата:</span> <strong>{format(new Date(selectedPlan.scheduled_date), 'dd.MM.yyyy')}</strong></div>
                   <div><span className="text-muted-foreground">Исполнитель:</span> <strong>{getProfileName(selectedPlan.assigned_to)}</strong></div>
-                  <div><span className="text-muted-foreground">Статус:</span> <Badge className={(statusConfig[selectedPlan.status] || statusConfig.draft).color}>{(statusConfig[selectedPlan.status] || statusConfig.draft).label}</Badge></div>
+                  <div><span className="text-muted-foreground">Статус:</span> <Badge className={(statusConfig[selectedPlan.status] || statusConfig.draft).color}>{getStatusLabel(selectedPlan.status)}</Badge></div>
                   <div><span className="text-muted-foreground">Создал:</span> <strong>{getProfileName(selectedPlan.created_by)}</strong></div>
                 </div>
 
@@ -444,7 +455,7 @@ export default function PPRPlans() {
                           <p className="text-sm font-medium">{getProfileName(signer.userId)}</p>
                           {signer.decidedAt && <p className="text-xs text-muted-foreground">{format(new Date(signer.decidedAt), 'dd.MM.yyyy HH:mm')}</p>}
                         </div>
-                        <Badge className={signerStatusClass[signer.status]}>{signer.status}</Badge>
+                        <Badge className={signerStatusClass[signer.status]}>{getSignerStatusLabel(signer.status)}</Badge>
                       </div>
                     ))}
                   </div>
@@ -454,11 +465,11 @@ export default function PPRPlans() {
                   <div className="flex justify-end gap-2 border-t pt-4">
                     <Button variant="outline" onClick={() => decisionMutation.mutate({ planId: selectedPlan.id, decision: 'Rejected' })} disabled={decisionMutation.isPending}>
                       <XCircle className="mr-2 h-4 w-4" />
-                      Reject
+                      {t('ppr.reject')}
                     </Button>
                     <Button onClick={() => decisionMutation.mutate({ planId: selectedPlan.id, decision: 'Approved' })} disabled={decisionMutation.isPending}>
                       <CheckCircle2 className="mr-2 h-4 w-4" />
-                      Approve
+                      {t('ppr.approve')}
                     </Button>
                   </div>
                 )}

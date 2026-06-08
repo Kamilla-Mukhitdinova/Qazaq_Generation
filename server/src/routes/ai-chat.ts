@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import { db } from '../db/index.js';
-import { categories, departments, kbArticles, profiles, reports, ticketHistory, ticketSla, ticketComments, tickets, userRoles, users } from '../db/schema.js';
+import { categories, departments, groups, kbArticles, profiles, reports, ticketHistory, ticketSla, ticketComments, tickets, userRoles, users } from '../db/schema.js';
 import { and, desc, eq, ilike, or } from 'drizzle-orm';
 
 const router = Router();
@@ -244,12 +244,30 @@ function mergeRolesPreferHighest(rows: { userId: string; role: string }[]): Reco
   return map;
 }
 
+function displayRoleForReport(role: string, groupName?: string | null): string {
+  const group = String(groupName || '').trim();
+  const normalized = group.toLowerCase();
+  if (normalized.includes('перв') || normalized.includes('1 линия') || normalized.includes('1-линия')) return 'Инженер первой линии';
+  if (normalized.includes('втор') || normalized.includes('2 линия') || normalized.includes('2-линия')) return 'Инженер второй линии';
+  if (normalized.includes('трет') || normalized.includes('3 линия') || normalized.includes('3-линия')) return 'Инженер третьей линии';
+  if (group && normalized.includes('инженер')) return group;
+
+  const labels: Record<string, string> = {
+    admin: 'Администратор',
+    manager: 'Менеджер',
+    agent: 'Инженер',
+    employee: 'Сотрудник',
+  };
+  return labels[role] || role;
+}
+
 async function fetchEmployeeAnalytics() {
   const allProfiles = await db.select({
     userId: profiles.userId,
     name: profiles.name,
     email: profiles.email,
     departmentId: profiles.departmentId,
+    groupId: profiles.groupId,
   }).from(profiles);
 
   const allRoles = await db.select({
@@ -287,8 +305,15 @@ async function fetchEmployeeAnalytics() {
     name: departments.name,
   }).from(departments);
 
+  const allGroups = await db.select({
+    id: groups.id,
+    name: groups.name,
+  }).from(groups);
+
   const deptMap: Record<string, string> = {};
   allDepts.forEach(d => { deptMap[d.id] = d.name; });
+  const groupMap: Record<string, string> = {};
+  allGroups.forEach(g => { groupMap[g.id] = g.name; });
 
   const roleMap = mergeRolesPreferHighest(
     allRoles.map(r => ({ userId: r.userId, role: String(r.role) }))
@@ -345,6 +370,7 @@ async function fetchEmployeeAnalytics() {
     });
 
     const userRole = roleMap[userId] || 'employee';
+    const position = p.groupId ? groupMap[p.groupId] || '' : '';
     const hidePii = shouldAnonymizeForAi(p.email, userRole);
 
     return {
@@ -352,6 +378,8 @@ async function fetchEmployeeAnalytics() {
       name: hidePii ? ANONYMIZED_EMPLOYEE_NAME : (p.name || ''),
       email: hidePii ? anonymizedEmailForAi(userId) : (p.email || ''),
       role: userRole,
+      roleDisplay: displayRoleForReport(userRole, position),
+      position: position || null,
       department: p.departmentId ? deptMap[p.departmentId] || 'Не указан' : 'Не указан',
       totalAssigned: assigned.length,
       totalCreated: created.length,
@@ -409,7 +437,7 @@ function formatEmployeeKpiAnswer(stats: Awaited<ReturnType<typeof fetchEmployeeA
 
     const lines = [
       `**${row.name}** (${row.email})`,
-      `- Роль: ${row.role}, отдел: ${row.department}`,
+      `- Роль: ${row.roleDisplay}, отдел: ${row.department}`,
       `- Назначено: ${assigned}, решено: ${resolved}, активно: ${active}`,
       `- SLA: всего ${row.slaTotal}, нарушений ${row.slaBreachedTotal}, средняя реакция ${avgResponseMin} мин`,
     ];
@@ -566,6 +594,10 @@ router.post('/reports/file', authMiddleware, async (req: Request, res: Response)
     if (!canManageTickets(req.user!.role)) return res.status(403).json({ error: 'Недостаточно прав для генерации отчёта' });
     const { periodMonth } = req.body;
     const period = String(periodMonth || new Date().toISOString().slice(0, 7));
+    if (!/^\d{4}-\d{2}$/.test(period)) {
+      return res.status(400).json({ error: 'Период должен быть в формате YYYY-MM' });
+    }
+
     const ticketsRes = await db.select().from(tickets).orderBy(desc(tickets.createdAt)).limit(500);
     const slaRows = await db.select().from(ticketSla);
     const periodTickets = ticketsRes.filter((ticket) => new Date(ticket.createdAt).toISOString().slice(0, 7) === period);
@@ -698,6 +730,7 @@ ${JSON.stringify(stats, null, 2)}
 ===
 Используй ТОЛЬКО этот JSON. Не выдумывай ФИО и не копируй имена из истории чата.
 Если name = «${ANONYMIZED_EMPLOYEE_NAME}», не называй человека иначе и не «восстанавливай» фамилию.
+Для роли в ответе используй поле roleDisplay или position. Никогда не выводи служебные коды role: agent/admin/manager/employee.
 Отвечай кратко и структурно, без сложных markdown-таблиц.`;
       } catch (e) {
         console.error('Failed to fetch employee analytics:', e);

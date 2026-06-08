@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_URL
+  || (import.meta.env.PROD ? 'https://qazaq-generation-api.onrender.com/api' : 'http://localhost:3001/api');
 
 class ApiClient {
   private token: string | null = null;
@@ -227,6 +228,10 @@ class ApiClient {
     return this.request(`/profiles/${userId}`);
   }
 
+  async createUser(data: any) {
+    return this.request('/profiles', { method: 'POST', body: JSON.stringify(data) });
+  }
+
   async updateMyProfile(data: any) {
     return this.request('/profiles/me', { method: 'PATCH', body: JSON.stringify(data) });
   }
@@ -237,6 +242,10 @@ class ApiClient {
 
   async updateUser(userId: string, data: any) {
     return this.request(`/profiles/${userId}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteUser(userId: string) {
+    return this.request(`/profiles/${userId}`, { method: 'DELETE' });
   }
 
   // --- CRUD endpoints ---
@@ -290,6 +299,8 @@ class ApiClient {
   async getReports() { return this.request<any[]>('/reports'); }
   async createReport(data: any) { return this.request('/reports', { method: 'POST', body: JSON.stringify(data) }); }
   async updateReport(id: string, data: any) { return this.request(`/reports/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }
+  async deleteReport(id: string) { return this.request(`/reports/${id}`, { method: 'DELETE' }); }
+  async deleteReports(ids: string[]) { return this.request('/reports', { method: 'DELETE', body: JSON.stringify({ ids }) }); }
 
   async getPerformanceScores() { return this.request<any[]>('/performance-scores'); }
   async getPerformanceKpi(periodMonth?: string) {
