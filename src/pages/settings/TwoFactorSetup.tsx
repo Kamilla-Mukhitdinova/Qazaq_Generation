@@ -48,12 +48,16 @@ export default function TwoFactorSetup() {
     if (otpCode.length !== 6) return;
     setIsLoading(true);
     try {
-      await api.confirm2FA(otpCode);
+      await api.confirm2FA(otpCode.replace(/\D/g, ''));
       setStep('complete');
       setIs2FAEnabled(true);
       toast({ title: t('common.success'), description: t('twofa.success') });
     } catch (e) {
-      toast({ title: t('common.error'), description: t('auth.invalidOtp'), variant: 'destructive' });
+      toast({
+        title: t('common.error'),
+        description: e instanceof Error ? e.message : t('auth.invalidOtp'),
+        variant: 'destructive',
+      });
     } finally { setIsLoading(false); }
   };
 

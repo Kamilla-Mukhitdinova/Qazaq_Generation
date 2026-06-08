@@ -183,6 +183,7 @@ router.post('/reset-password', async (req, res) => {
 router.post('/verify-2fa', async (req, res) => {
   try {
     const { tempToken, code } = req.body;
+    const otpCode = String(code || '').replace(/\D/g, '');
     const payload = jwt.verify(tempToken, process.env.JWT_SECRET!) as Pending2FAPayload;
 
     if (!payload.pending2FA) {
@@ -201,7 +202,7 @@ router.post('/verify-2fa', async (req, res) => {
       period: 30,
     });
 
-    const delta = totp.validate({ token: code, window: 1 });
+    const delta = totp.validate({ token: otpCode, window: 2 });
     if (delta === null) {
       return res.status(401).json({ error: 'OTP коды қате' });
     }
@@ -246,6 +247,7 @@ router.post('/setup-2fa', authMiddleware, async (req, res) => {
 router.post('/confirm-2fa', authMiddleware, async (req, res) => {
   try {
     const { code } = req.body;
+    const otpCode = String(code || '').replace(/\D/g, '');
     const [user] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
 
     if (!user?.totpSecret) {
@@ -259,7 +261,7 @@ router.post('/confirm-2fa', authMiddleware, async (req, res) => {
       period: 30,
     });
 
-    const delta = totp.validate({ token: code, window: 1 });
+    const delta = totp.validate({ token: otpCode, window: 2 });
     if (delta === null) {
       return res.status(400).json({ error: 'OTP коды қате' });
     }
