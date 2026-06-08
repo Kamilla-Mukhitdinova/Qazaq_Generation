@@ -13,7 +13,6 @@ import { useLanguage } from '@/contexts/LanguageContext';
 type SetupStep = 'initial' | 'qr' | 'verify' | 'complete';
 
 export default function TwoFactorSetup() {
-  const { user } = useAuth();
   const { toast } = useToast();
   const { t } = useLanguage();
   const [step, setStep] = useState<SetupStep>('initial');
@@ -35,6 +34,7 @@ export default function TwoFactorSetup() {
   const handleEnroll = async () => {
     setIsLoading(true);
     try {
+      setOtpCode('');
       const data = await api.setup2FA();
       setQrCode(data.qrCode);
       setSecret(data.secret);
@@ -100,6 +100,17 @@ export default function TwoFactorSetup() {
             </div>
           ) : step === 'verify' ? (
             <div className="space-y-4">
+              {qrCode && (
+                <div className="rounded-md border bg-muted/30 p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <img src={qrCode} alt="QR Code" className="mx-auto h-24 w-24 rounded-md border bg-white p-1 sm:mx-0" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <p className="text-sm text-muted-foreground">{t('twofa.verifyHint')}</p>
+                      <Input value={secret} readOnly className="h-9 font-mono text-xs" />
+                    </div>
+                  </div>
+                </div>
+              )}
               <p className="text-sm text-muted-foreground">{t('twofa.enterCode')}</p>
               <div className="flex justify-center">
                 <InputOTP maxLength={6} value={otpCode} onChange={(value) => setOtpCode(value)} disabled={isLoading}>
@@ -110,6 +121,9 @@ export default function TwoFactorSetup() {
                 <Button variant="outline" onClick={() => { setStep('qr'); setOtpCode(''); }} className="flex-1">{t('auth.back')}</Button>
                 <Button onClick={handleVerify} disabled={isLoading || otpCode.length !== 6} className="flex-1">{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('twofa.confirm')}</Button>
               </div>
+              <Button variant="ghost" onClick={handleEnroll} disabled={isLoading} className="w-full">
+                {t('twofa.generateNew')}
+              </Button>
             </div>
           ) : (
             <div className="text-center space-y-4"><Check className="h-12 w-12 text-green-500 mx-auto" /><p>{t('twofa.complete')}</p></div>
