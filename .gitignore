@@ -28,3 +28,4 @@ generated-documents/
 *.njsproj
 *.sln
 *.sw?
+.vercel
