@@ -40,6 +40,8 @@ type Pending2FAPayload = {
 
 const resetTokens = new Map<string, { userId: string; expiresAt: number }>();
 const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
+const LOGIN_TOTP_WINDOW = 2;
+const SETUP_TOTP_WINDOW = 10;
 
 function hashResetToken(token: string) {
   return createHash('sha256').update(token).digest('hex');
@@ -202,7 +204,7 @@ router.post('/verify-2fa', async (req, res) => {
       period: 30,
     });
 
-    const delta = totp.validate({ token: otpCode, window: 2 });
+    const delta = totp.validate({ token: otpCode, window: LOGIN_TOTP_WINDOW });
     if (delta === null) {
       return res.status(401).json({ error: 'OTP коды қате' });
     }
@@ -261,7 +263,7 @@ router.post('/confirm-2fa', authMiddleware, async (req, res) => {
       period: 30,
     });
 
-    const delta = totp.validate({ token: otpCode, window: 2 });
+    const delta = totp.validate({ token: otpCode, window: SETUP_TOTP_WINDOW });
     if (delta === null) {
       return res.status(400).json({ error: 'OTP коды қате' });
     }
