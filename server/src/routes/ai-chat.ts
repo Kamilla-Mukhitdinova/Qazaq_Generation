@@ -404,6 +404,152 @@ function isEmployeeKpiQuestion(text: string) {
     .some(word => value.includes(word));
 }
 
+function isTicketAnalyticsQuestion(text: string) {
+  const value = text.toLowerCase();
+  return [
+    'analyze recent tickets',
+    'common issues',
+    'recent tickets',
+    'ticket analysis',
+    'заявк',
+    'тикет',
+    'частые',
+    'проблем',
+    'анализ',
+    'соңғы',
+    'талда',
+  ].some(word => value.includes(word));
+}
+
+async function fetchTicketAnalytics(limit = 100) {
+  const recentTickets = await db.select({
+    id: tickets.id,
+    title: tickets.title,
+    description: tickets.description,
+    status: tickets.status,
+    priority: tickets.priority,
+    categoryId: tickets.categoryId,
+    createdAt: tickets.createdAt,
+  }).from(tickets).orderBy(desc(tickets.createdAt)).limit(limit);
+
+  const allCategories = await db.select({
+    id: categories.id,
+    name: categories.name,
+  }).from(categories);
+  const categoryMap = new Map(allCategories.map(category => [category.id, category.name]));
+
+  const countBy = (values: string[]) => values.reduce<Record<string, number>>((acc, value) => {
+    const key = value || 'unknown';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  const stopWords = new Set([
+    'the', 'and', 'for', 'with', 'from', 'this', 'that', 'не', 'нет', 'что', 'как', 'при', 'или', 'для', 'меня',
+    'работает', 'ошибка', 'проблема', 'заявка', 'тикет', 'қате', 'жоқ', 'жұмыс', 'істемейді',
+  ]);
+  const wordCounts: Record<string, number> = {};
+  for (const ticket of recentTickets) {
+    const text = `${ticket.title || ''} ${ticket.description || ''}`.toLowerCase();
+    const words = text
+      .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+      .split(/\s+/)
+      .map(word => word.trim())
+      .filter(word => word.length >= 4 && !stopWords.has(word));
+    for (const word of words) wordCounts[word] = (wordCounts[word] || 0) + 1;
+  }
+
+  const topTerms = Object.entries(wordCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([term, count]) => ({ term, count }));
+
+  return {
+    total: recentTickets.length,
+    statusCounts: countBy(recentTickets.map(ticket => String(ticket.status || 'unknown'))),
+    priorityCounts: countBy(recentTickets.map(ticket => String(ticket.priority || 'unknown'))),
+    categoryCounts: countBy(recentTickets.map(ticket => categoryMap.get(ticket.categoryId || '') || 'Без категории')),
+    topTerms,
+    recent: recentTickets.slice(0, 8).map(ticket => ({
+      title: ticket.title,
+      status: ticket.status,
+      priority: ticket.priority,
+      category: categoryMap.get(ticket.categoryId || '') || 'Без категории',
+    })),
+  };
+}
+
+function formatCountMap(map: Record<string, number>) {
+  const entries = Object.entries(map).sort((a, b) => b[1] - a[1]);
+  return entries.length ? entries.map(([key, value]) => `- ${key}: ${value}`).join('\n') : '- нет данных';
+}
+
+function formatTicketAnalyticsAnswer(stats: Awaited<ReturnType<typeof fetchTicketAnalytics>>, language?: string) {
+  if (language === 'en') {
+    return [
+      `Recent ticket analysis: ${stats.total} tickets reviewed.`,
+      '',
+      'Statuses:',
+      formatCountMap(stats.statusCounts),
+      '',
+      'Priorities:',
+      formatCountMap(stats.priorityCounts),
+      '',
+      'Common categories:',
+      formatCountMap(stats.categoryCounts),
+      '',
+      `Common issue terms: ${stats.topTerms.map(item => `${item.term} (${item.count})`).join(', ') || 'no clear repeated terms'}.`,
+      '',
+      'Recommended actions:',
+      '- Review the largest category first and prepare a short knowledge-base article.',
+      '- Check high and critical tickets for SLA risk.',
+      '- Group similar recent requests before assigning engineers.',
+    ].join('\n');
+  }
+
+  if (language === 'kk') {
+    return [
+      `Соңғы өтінімдер талдауы: ${stats.total} тикет қаралды.`,
+      '',
+      'Статустар:',
+      formatCountMap(stats.statusCounts),
+      '',
+      'Басымдықтар:',
+      formatCountMap(stats.priorityCounts),
+      '',
+      'Жиі кездесетін санаттар:',
+      formatCountMap(stats.categoryCounts),
+      '',
+      `Қайталанатын сөздер: ${stats.topTerms.map(item => `${item.term} (${item.count})`).join(', ') || 'анық қайталану жоқ'}.`,
+      '',
+      'Ұсыныстар:',
+      '- Ең көп санат бойынша қысқа білім базасы мақаласын дайындаңыз.',
+      '- High және critical тикеттердің SLA тәуекелін тексеріңіз.',
+      '- Ұқсас өтінімдерді инженерлерге топтап тағайындаңыз.',
+    ].join('\n');
+  }
+
+  return [
+    `Анализ последних заявок: просмотрено ${stats.total} тикетов.`,
+    '',
+    'Статусы:',
+    formatCountMap(stats.statusCounts),
+    '',
+    'Приоритеты:',
+    formatCountMap(stats.priorityCounts),
+    '',
+    'Частые категории:',
+    formatCountMap(stats.categoryCounts),
+    '',
+    `Повторяющиеся темы: ${stats.topTerms.map(item => `${item.term} (${item.count})`).join(', ') || 'явных повторов нет'}.`,
+    '',
+    'Рекомендации:',
+    '- Разобрать самую частую категорию и подготовить короткую статью базы знаний.',
+    '- Проверить high и critical заявки на риск SLA.',
+    '- Сгруппировать похожие обращения перед назначением инженерам.',
+  ].join('\n');
+}
+
 function pickEmployeeAnalyticsRows(stats: Awaited<ReturnType<typeof fetchEmployeeAnalytics>>, text: string) {
   const value = text.toLowerCase();
   const rows = stats.filter(row => ['agent', 'manager'].includes(row.role));
@@ -646,7 +792,17 @@ router.post('/', authMiddleware, async (req: Request, res: Response) => {
     }
 
     if (!apiKey) {
-      return res.status(500).json({ error: 'OPENAI_API_KEY is not configured' });
+      if (suggestMode) return res.json({ suggestions: [] });
+      if (isTicketAnalyticsQuestion(currentText)) {
+        const stats = await fetchTicketAnalytics();
+        return writeSseText(res, formatTicketAnalyticsAnswer(stats, language));
+      }
+      return writeSseText(
+        res,
+        language === 'en'
+          ? 'OpenAI key is not configured on the server. I can still answer built-in analytics requests, for example: "Analyze recent tickets and show common issues".'
+          : 'OPENAI_API_KEY не настроен на сервере. Я всё ещё могу отвечать на встроенную аналитику, например: "Analyze recent tickets and show common issues".',
+      );
     }
 
     const langMap: Record<string, string> = {
