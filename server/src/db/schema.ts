@@ -24,6 +24,7 @@ export const users = pgTable('users', {
 export const departments = pgTable('departments', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
+  nameEn: text('name_en'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

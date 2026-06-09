@@ -6,9 +6,9 @@ async function seed() {
   console.log('🌱 Seeding database...');
 
   // Create departments
-  const [itDept] = await db.insert(departments).values({ name: 'IT бөлімі' }).returning();
-  const [hrDept] = await db.insert(departments).values({ name: 'HR бөлімі' }).returning();
-  const [finDept] = await db.insert(departments).values({ name: 'Қаржы бөлімі' }).returning();
+  const [itDept] = await db.insert(departments).values({ name: 'IT бөлімі', nameEn: 'IT Department' }).returning();
+  const [hrDept] = await db.insert(departments).values({ name: 'HR бөлімі', nameEn: 'HR Department' }).returning();
+  const [finDept] = await db.insert(departments).values({ name: 'Қаржы бөлімі', nameEn: 'Finance Department' }).returning();
 
   // Create categories
   const [catSupport] = await db.insert(categories).values({ name: 'Техникалық қолдау', description: 'Техникалық мәселелер' }).returning();

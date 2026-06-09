@@ -83,7 +83,7 @@ export default function Dashboard() {
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [employeeKpiRows, setEmployeeKpiRows] = useState<any[]>([]);
-  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+  const [departments, setDepartments] = useState<{ id: string; name: string; nameEn?: string }[]>([]);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [rawData, setRawData] = useState<DashboardRawData | null>(null);
 

@@ -15,6 +15,7 @@ import chatRoutes from './routes/chat.js';
 import assetRoutes from './routes/assets.js';
 import meetingRoutes from './routes/meetings.js';
 import { ensureChatSchema } from './db/ensureChatSchema.js';
+import { migrateDeptNames } from './db/migrateDeptNames.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -72,6 +73,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 });
 
 await ensureChatSchema();
+await migrateDeptNames();
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

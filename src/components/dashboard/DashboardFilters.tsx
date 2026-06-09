@@ -23,13 +23,14 @@ interface DashboardFiltersProps {
   filters: FiltersState;
   onFilterChange: (key: keyof FiltersState, value: string) => void;
   onReset: () => void;
-  departments: { id: string; name: string }[];
+  departments: { id: string; name: string; nameEn?: string }[];
   agents: { id: string; name: string }[];
   filterOptions: DashboardFilterOptions;
 }
 
 export default function DashboardFilters({ filters, onFilterChange, onReset, departments, agents, filterOptions }: DashboardFiltersProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const deptName = (d: { name: string; nameEn?: string }) => language === 'en' ? (d.nameEn || d.name) : d.name;
   const hasFilters = Object.values(filters).some(v => v && v !== 'all');
   const hasOption = (key: keyof DashboardFilterOptions, value: string) => filterOptions[key].includes(value);
 
@@ -86,7 +87,7 @@ export default function DashboardFilters({ filters, onFilterChange, onReset, dep
         <SelectContent>
           <SelectItem value="all">{t('dashboard.filter.allDepartments')}</SelectItem>
           {departments.map(d => (
-            <SelectItem key={d.id} value={d.id} disabled={!hasOption('department', d.id)}>{d.name}</SelectItem>
+            <SelectItem key={d.id} value={d.id} disabled={!hasOption('department', d.id)}>{deptName(d)}</SelectItem>
           ))}
         </SelectContent>
       </Select>
