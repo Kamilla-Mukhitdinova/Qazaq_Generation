@@ -1070,9 +1070,6 @@ function GroupsView() {
                   ))}
                 </SelectContent>
               </Select>
-              {newUser.role === 'agent' && !newUser.groupId && (
-                <p className="text-xs text-destructive">Выберите первую, вторую или третью линию поддержки.</p>
-              )}
             </div>
           </div>
         </CardHeader>
