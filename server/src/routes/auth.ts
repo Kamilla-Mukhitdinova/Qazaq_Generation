@@ -40,7 +40,7 @@ type Pending2FAPayload = {
 
 const resetTokens = new Map<string, { userId: string; expiresAt: number }>();
 const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
-const LOGIN_TOTP_WINDOW = 2;
+const LOGIN_TOTP_WINDOW = 10;
 const SETUP_TOTP_WINDOW = 10;
 
 function hashResetToken(token: string) {
