@@ -181,6 +181,51 @@ async function callJsonModel(system: string, user: string) {
   return JSON.parse(content);
 }
 
+function parseAgentCommandFallback(text: string) {
+  const value = text.trim();
+  const lower = value.toLowerCase();
+  const createPatterns = [
+    'создай тикет',
+    'создать тикет',
+    'создай заявку',
+    'создать заявку',
+    'create ticket',
+    'new ticket',
+  ];
+
+  if (createPatterns.some(pattern => lower.includes(pattern))) {
+    const title =
+      value.split(':').slice(1).join(':').trim() ||
+      value
+        .replace(/создай тикет|создать тикет|создай заявку|создать заявку|create ticket|new ticket/gi, '')
+        .replace(/^[-–—:\s]+/, '')
+        .trim() ||
+      'Заявка от AI Agent';
+
+    const priority = lower.includes('critical') || lower.includes('критич') || lower.includes('сроч')
+      ? 'critical'
+      : lower.includes('high') || lower.includes('высок')
+        ? 'high'
+        : lower.includes('low') || lower.includes('низк')
+          ? 'low'
+          : 'medium';
+
+    return {
+      action: 'create_ticket',
+      title: title.slice(0, 180),
+      description: value,
+      priority,
+    };
+  }
+
+  return {
+    action: 'none',
+    title: '',
+    description: '',
+    priority: 'medium',
+  };
+}
+
 async function callTextModel(system: string, user: string) {
   const apiKey = resolveOpenAiBearer(openaiBaseUrl);
   if (!apiKey) throw new Error('OPENAI_API_KEY is not configured');
@@ -625,8 +670,10 @@ router.post('/agent', authMiddleware, async (req: Request, res: Response) => {
     const text = String(message || '').trim();
     if (!text) return res.status(400).json({ error: 'Message is required' });
 
-    const parsed = await callJsonModel(
-      `Ты диспетчер действий ITSM. Верни ТОЛЬКО JSON:
+    const apiKey = resolveOpenAiBearer(openaiBaseUrl);
+    const parsed = apiKey
+      ? await callJsonModel(
+        `Ты диспетчер действий ITSM. Верни ТОЛЬКО JSON:
 {
   "action": "create_ticket" | "update_status" | "assign_ticket" | "none",
   "title": string,
@@ -637,8 +684,9 @@ router.post('/agent', authMiddleware, async (req: Request, res: Response) => {
   "assignee": string
 }
 Правила: создавай action только если пользователь явно просит создать тикет, поменять статус или назначить исполнителя. Если данных не хватает, action="none".`,
-      text,
-    );
+        text,
+      )
+      : parseAgentCommandFallback(text);
 
     const action = String(parsed.action || 'none');
 
