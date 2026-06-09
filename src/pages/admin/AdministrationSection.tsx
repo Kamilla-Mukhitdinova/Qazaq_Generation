@@ -63,6 +63,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 type AdminSection =
   | 'users'
@@ -123,6 +124,45 @@ type NewAdminUserForm = {
   departmentId: string | null;
   groupId: string | null;
 };
+
+function displayDepartmentName(name: string, language: string, nameEn?: string | null) {
+  if (language !== 'en') return name;
+  const map: Record<string, string> = {
+    'HR бөлімі': 'HR Department',
+    'IT бөлімі': 'IT Department',
+    'Қаржы бөлімі': 'Finance Department',
+    'ПТО': 'Engineering Department',
+  };
+  return nameEn || map[name] || name;
+}
+
+function displayGroupName(name: string, language: string) {
+  if (language !== 'en') return name;
+  const value = name.toLowerCase();
+  if (value.includes('перв') || value.includes('1 линия') || value.includes('1-линия')) return 'First-line Engineer';
+  if (value.includes('втор') || value.includes('2 линия') || value.includes('2-линия')) return 'Second-line Engineer';
+  if (value.includes('трет') || value.includes('3 линия') || value.includes('3-линия')) return 'Third-line Engineer';
+  if (value.includes('инженер')) return 'Engineer';
+  const map: Record<string, string> = {
+    'Не указана': 'Not specified',
+    'Группа не указана': 'Group not specified',
+  };
+  return map[name] || name;
+}
+
+function displayPersonName(name: string, language: string) {
+  if (language !== 'en') return name;
+  const map: Record<string, string> = {
+    'Лия Жарылқасын': 'Liya Zharylkassyn',
+    'Аиша Нурланова': 'Aisha Nurlanova',
+    'Камилла Қайратқызы': 'Kamilla Kairatkyzy',
+    'Камилла Мұхитдинова': 'Kamilla Mukhitdinova',
+    'Даулетова Дильмира Дильмурратовна': 'Dauletova Dilmira Dilmuratovna',
+    'Дәулетова Дильмира Дильмуртовна': 'Dauletova Dilmira Dilmuratovna',
+    'Дәулетова Дильмира Дильмуратовна': 'Dauletova Dilmira Dilmuratovna',
+  };
+  return map[name] || name;
+}
 
 const initialNewAdminUserForm: NewAdminUserForm = {
   name: '',
@@ -315,6 +355,8 @@ function DataTable({ columns, rows, count, className }: { columns: TableColumn[]
 function UsersView() {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
+  const { language } = useLanguage();
+  const t = (ru: string, en: string) => (language === 'en' ? en : ru);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
@@ -328,17 +370,17 @@ function UsersView() {
   const [saving, setSaving] = useState(false);
 
   const roleLabels: Record<AppRole, string> = {
-    admin: 'Администратор',
-    manager: 'Менеджер',
-    agent: 'Инженер',
-    employee: 'Пользователь',
+    admin: t('Администратор', 'Administrator'),
+    manager: t('Менеджер', 'Manager'),
+    agent: t('Инженер', 'Engineer'),
+    employee: t('Пользователь', 'User'),
   };
 
   const roleDescriptions: Record<AppRole, string> = {
-    employee: 'Может создать заявку и отслеживать только свои обращения.',
-    agent: 'Работает с заявками поддержки. Для инженера нужно выбрать линию/группу.',
-    manager: 'Видит управленческие разделы и отчеты без администрирования ролей.',
-    admin: 'Полный доступ, включая перевод пользователей в инженеры и другие роли.',
+    employee: t('Может создать заявку и отслеживать только свои обращения.', 'Can create tickets and track only their own requests.'),
+    agent: t('Работает с заявками поддержки. Для инженера нужно выбрать линию/группу.', 'Works with support tickets. Select a line/group for an engineer.'),
+    manager: t('Видит управленческие разделы и отчеты без администрирования ролей.', 'Can view management sections and reports without role administration.'),
+    admin: t('Полный доступ, включая перевод пользователей в инженеры и другие роли.', 'Full access, including assigning users to engineer and other roles.'),
   };
 
   const roleColors: Record<AppRole, string> = {
@@ -352,10 +394,10 @@ function UsersView() {
     if (user.role !== 'agent') return roleLabels[user.role];
 
     const group = groupName(user.groupId).toLowerCase();
-    if (group.includes('1 линия') || group.includes('1-линия') || group.includes('перв')) return 'Инженер первой линии';
-    if (group.includes('2 линия') || group.includes('2-линия') || group.includes('втор')) return 'Инженер второй линии';
-    if (group.includes('3 линия') || group.includes('3-линия') || group.includes('трет')) return 'Инженер третьей линии';
-    return 'Инженер';
+    if (group.includes('1 линия') || group.includes('1-линия') || group.includes('перв') || group.includes('first')) return t('Инженер первой линии', 'First-line Engineer');
+    if (group.includes('2 линия') || group.includes('2-линия') || group.includes('втор') || group.includes('second')) return t('Инженер второй линии', 'Second-line Engineer');
+    if (group.includes('3 линия') || group.includes('3-линия') || group.includes('трет') || group.includes('third')) return t('Инженер третьей линии', 'Third-line Engineer');
+    return roleLabels.agent;
   };
 
   const normalizeUser = (profile: any, roleMap: Map<string, AppRole>, index: number): AdminUserRow => {
@@ -363,7 +405,7 @@ function UsersView() {
     return {
       id: profile.id || userId,
       userId,
-      name: profile.name || 'Без имени',
+      name: profile.name || t('Без имени', 'Unnamed user'),
       email: profile.email || '-',
       departmentId: profile.department_id || profile.departmentId || null,
       groupId: profile.group_id || profile.groupId || null,
@@ -390,7 +432,7 @@ function UsersView() {
       setUsers((profiles || []).map((profile: any, index: number) => normalizeUser(profile, roleMap, index)));
     } catch (error) {
       console.error(error);
-      toast({ title: 'Ошибка', description: 'Не удалось загрузить пользователей', variant: 'destructive' });
+      toast({ title: t('Ошибка', 'Error'), description: t('Не удалось загрузить пользователей', 'Failed to load users'), variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -400,8 +442,14 @@ function UsersView() {
     fetchUsers();
   }, []);
 
-  const departmentName = (id: string | null) => departments.find((department) => department.id === id)?.name || 'Не указан';
-  const groupName = (id: string | null) => groups.find((group) => group.id === id)?.name || 'Не указана';
+  const departmentName = (id: string | null) => {
+    const department = departments.find((item) => item.id === id);
+    return department ? displayDepartmentName(department.name, language, department.name_en || department.nameEn) : t('Не указан', 'Not specified');
+  };
+  const groupName = (id: string | null) => {
+    const group = groups.find((item) => item.id === id);
+    return group ? displayGroupName(group.name, language) : t('Не указана', 'Not specified');
+  };
 
   const filteredUsers = users.filter((user) => {
     const query = searchQuery.toLowerCase().trim();
@@ -419,7 +467,7 @@ function UsersView() {
   const handleUpdateUser = async () => {
     if (!editingUser) return;
     if (editingUser.role === 'agent' && !editingUser.groupId) {
-      toast({ title: 'Выберите линию', description: 'Для инженера нужно указать группу: первая, вторая или третья линия.', variant: 'destructive' });
+      toast({ title: t('Выберите линию', 'Select a line'), description: t('Для инженера нужно указать группу: первая, вторая или третья линия.', 'For an engineer, select a first, second, or third-line group.'), variant: 'destructive' });
       return;
     }
 
@@ -432,11 +480,11 @@ function UsersView() {
       });
       await api.updateUserRole(editingUser.userId, editingUser.role);
       setEditingUser(null);
-      toast({ title: 'Готово', description: 'Пользователь обновлён' });
+      toast({ title: t('Готово', 'Done'), description: t('Пользователь обновлён', 'User updated') });
       fetchUsers();
     } catch (error) {
       console.error(error);
-      toast({ title: 'Ошибка', description: 'Не удалось обновить пользователя', variant: 'destructive' });
+      toast({ title: t('Ошибка', 'Error'), description: t('Не удалось обновить пользователя', 'Failed to update user'), variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -444,19 +492,19 @@ function UsersView() {
 
   const handleCreateUser = async () => {
     if (!newUser.name.trim()) {
-      toast({ title: 'Ошибка', description: 'Укажите имя пользователя', variant: 'destructive' });
+      toast({ title: t('Ошибка', 'Error'), description: t('Укажите имя пользователя', 'Enter the user name'), variant: 'destructive' });
       return;
     }
     if (!newUser.email.trim() || !newUser.email.includes('@')) {
-      toast({ title: 'Ошибка', description: 'Укажите корректный email', variant: 'destructive' });
+      toast({ title: t('Ошибка', 'Error'), description: t('Укажите корректный email', 'Enter a valid email'), variant: 'destructive' });
       return;
     }
     if (newUser.password.length < 6) {
-      toast({ title: 'Ошибка', description: 'Пароль должен быть не короче 6 символов', variant: 'destructive' });
+      toast({ title: t('Ошибка', 'Error'), description: t('Пароль должен быть не короче 6 символов', 'Password must be at least 6 characters long'), variant: 'destructive' });
       return;
     }
     if (newUser.role === 'agent' && !newUser.groupId) {
-      toast({ title: 'Выберите линию', description: 'Для инженера нужно указать группу: первая, вторая или третья линия.', variant: 'destructive' });
+      toast({ title: t('Выберите линию', 'Select a line'), description: t('Для инженера нужно указать группу: первая, вторая или третья линия.', 'For an engineer, select a first, second, or third-line group.'), variant: 'destructive' });
       return;
     }
 
@@ -472,10 +520,10 @@ function UsersView() {
       });
       setCreateOpen(false);
       setNewUser(initialNewAdminUserForm);
-      toast({ title: 'Готово', description: 'Пользователь добавлен' });
+      toast({ title: t('Готово', 'Done'), description: t('Пользователь добавлен', 'User added') });
       fetchUsers();
     } catch (error: any) {
-      toast({ title: 'Ошибка', description: error.message || 'Не удалось добавить пользователя', variant: 'destructive' });
+      toast({ title: t('Ошибка', 'Error'), description: error.message || t('Не удалось добавить пользователя', 'Failed to add user'), variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -484,7 +532,7 @@ function UsersView() {
   const handleDeleteUser = async () => {
     if (!deletingUser) return;
     if (deletingUser.userId === currentUser?.id) {
-      toast({ title: 'Ошибка', description: 'Нельзя удалить свой текущий аккаунт', variant: 'destructive' });
+      toast({ title: t('Ошибка', 'Error'), description: t('Нельзя удалить свой текущий аккаунт', 'You cannot delete your current account'), variant: 'destructive' });
       setDeletingUser(null);
       return;
     }
@@ -492,21 +540,21 @@ function UsersView() {
     setSaving(true);
     try {
       await api.deleteUser(deletingUser.userId);
-      toast({ title: 'Готово', description: 'Пользователь удалён' });
+      toast({ title: t('Готово', 'Done'), description: t('Пользователь удалён', 'User deleted') });
       setDeletingUser(null);
       fetchUsers();
     } catch (error: any) {
-      toast({ title: 'Ошибка', description: error.message || 'Не удалось удалить пользователя', variant: 'destructive' });
+      toast({ title: t('Ошибка', 'Error'), description: error.message || t('Не удалось удалить пользователя', 'Failed to delete user'), variant: 'destructive' });
     } finally {
       setSaving(false);
     }
   };
 
   const statCards = [
-    { label: 'Всего пользователей', value: users.length },
-    { label: 'Обычные пользователи', value: users.filter((user) => user.role === 'employee').length },
-    { label: 'Инженеры', value: users.filter((user) => user.role === 'agent').length },
-    { label: 'Админы и менеджеры', value: users.filter((user) => user.role === 'manager' || user.role === 'admin').length },
+    { label: t('Всего пользователей', 'Total users'), value: users.length },
+    { label: t('Обычные пользователи', 'Regular users'), value: users.filter((user) => user.role === 'employee').length },
+    { label: t('Инженеры', 'Engineers'), value: users.filter((user) => user.role === 'agent').length },
+    { label: t('Админы и менеджеры', 'Admins and managers'), value: users.filter((user) => user.role === 'manager' || user.role === 'admin').length },
   ];
 
   return (
@@ -514,21 +562,21 @@ function UsersView() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            <span>Главная</span>
+            <span>{t('Главная', 'Dashboard')}</span>
             <span>/</span>
-            <span>Администрирование</span>
+            <span>{t('Администрирование', 'Administration')}</span>
             <span>/</span>
-            <span className="font-medium text-foreground">Пользователи</span>
+            <span className="font-medium text-foreground">{t('Пользователи', 'Users')}</span>
           </div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
             <UserCog className="h-6 w-6 text-primary" />
-            Управление пользователями
+            {t('Управление пользователями', 'User Management')}
           </h1>
-          <p className="text-muted-foreground">Новые регистрации становятся обычными пользователями. Админ при необходимости назначает роль инженера или сотрудника.</p>
+          <p className="text-muted-foreground">{t('Новые регистрации становятся обычными пользователями. Админ при необходимости назначает роль инженера или сотрудника.', 'New registrations become regular users. An admin can assign engineer or staff roles when needed.')}</p>
         </div>
         <Button className="gap-2" onClick={() => setCreateOpen(true)}>
           <UserPlus className="h-4 w-4" />
-          Добавить пользователя
+          {t('Добавить пользователя', 'Add User')}
         </Button>
       </div>
 
@@ -546,14 +594,14 @@ function UsersView() {
       <Card className="rounded-lg">
         <CardHeader className="gap-4 border-b">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <CardTitle>Список пользователей</CardTitle>
+            <CardTitle>{t('Список пользователей', 'User List')}</CardTitle>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="relative min-w-[280px]">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Поиск по имени, email, отделу"
+                  placeholder={t('Поиск по имени, email, отделу', 'Search by name, email, department')}
                   className="pl-10"
                 />
               </div>
@@ -562,7 +610,7 @@ function UsersView() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Все роли</SelectItem>
+                  <SelectItem value="all">{t('Все роли', 'All roles')}</SelectItem>
                   {(['employee', 'agent', 'manager', 'admin'] as AppRole[]).map((role) => (
                     <SelectItem key={role} value={role}>{roleLabels[role]}</SelectItem>
                   ))}
@@ -581,12 +629,12 @@ function UsersView() {
               <table className="w-full min-w-[900px] text-sm">
                 <thead className="border-b bg-muted/45 text-left text-xs uppercase text-muted-foreground">
                   <tr>
-                    <th className="px-5 py-3 font-medium">Пользователь</th>
-                    <th className="px-5 py-3 font-medium">Роль</th>
-                    <th className="px-5 py-3 font-medium">Отдел</th>
-                    <th className="px-5 py-3 font-medium">Группа</th>
-                    <th className="px-5 py-3 font-medium">Дата регистрации</th>
-                    <th className="px-5 py-3 text-right font-medium">Действия</th>
+                    <th className="px-5 py-3 font-medium">{t('Пользователь', 'User')}</th>
+                    <th className="px-5 py-3 font-medium">{t('Роль', 'Role')}</th>
+                    <th className="px-5 py-3 font-medium">{t('Отдел', 'Department')}</th>
+                    <th className="px-5 py-3 font-medium">{t('Группа', 'Group')}</th>
+                    <th className="px-5 py-3 font-medium">{t('Дата регистрации', 'Registration Date')}</th>
+                    <th className="px-5 py-3 text-right font-medium">{t('Действия', 'Actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -595,10 +643,10 @@ function UsersView() {
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                            {user.name.slice(0, 2).toUpperCase()}
+                            {displayPersonName(user.name, language).slice(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <p className="font-medium text-foreground">{user.name}</p>
+                            <p className="font-medium text-foreground">{displayPersonName(user.name, language)}</p>
                             <p className="text-xs text-muted-foreground">{user.email}</p>
                           </div>
                         </div>
@@ -611,7 +659,7 @@ function UsersView() {
                       <td className="px-5 py-4 text-muted-foreground">{format(new Date(user.createdAt), 'dd.MM.yyyy')}</td>
                       <td className="px-5 py-4 text-right">
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => setEditingUser({ ...user })} aria-label="Редактировать пользователя">
+                          <Button variant="ghost" size="icon" onClick={() => setEditingUser({ ...user })} aria-label={t('Редактировать пользователя', 'Edit user')}>
                             <Pencil className="h-4 w-4" />
                           </Button>
                           <Button
@@ -620,7 +668,7 @@ function UsersView() {
                             className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                             onClick={() => setDeletingUser(user)}
                             disabled={user.userId === currentUser?.id}
-                            aria-label="Удалить пользователя"
+                            aria-label={t('Удалить пользователя', 'Delete user')}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -630,7 +678,7 @@ function UsersView() {
                   ))}
                   {filteredUsers.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="h-40 px-5 text-center text-muted-foreground">Пользователи не найдены</td>
+                      <td colSpan={6} className="h-40 px-5 text-center text-muted-foreground">{t('Пользователи не найдены', 'No users found')}</td>
                     </tr>
                   )}
                 </tbody>
@@ -643,17 +691,17 @@ function UsersView() {
       <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Редактировать пользователя</DialogTitle>
-            <DialogDescription>Переведите пользователя в нужную роль и укажите линию для инженера</DialogDescription>
+            <DialogTitle>{t('Редактировать пользователя', 'Edit User')}</DialogTitle>
+            <DialogDescription>{t('Переведите пользователя в нужную роль и укажите линию для инженера', 'Assign the required role and select a line for an engineer')}</DialogDescription>
           </DialogHeader>
           {editingUser && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Имя</Label>
+                <Label>{t('Имя', 'Name')}</Label>
                 <Input value={editingUser.name} onChange={(event) => setEditingUser({ ...editingUser, name: event.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label>Роль</Label>
+                <Label>{t('Роль', 'Role')}</Label>
                 <Select
                   value={editingUser.role}
                   onValueChange={(value: AppRole) => setEditingUser({
@@ -672,41 +720,41 @@ function UsersView() {
                 <p className="text-xs text-muted-foreground">{roleDescriptions[editingUser.role]}</p>
               </div>
               <div className="space-y-2">
-                <Label>Отдел</Label>
+                <Label>{t('Отдел', 'Department')}</Label>
                 <Select value={editingUser.departmentId || 'none'} onValueChange={(value) => setEditingUser({ ...editingUser, departmentId: value === 'none' ? null : value, groupId: null })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Не указан</SelectItem>
+                    <SelectItem value="none">{t('Не указан', 'Not specified')}</SelectItem>
                     {departments.map((department) => (
-                      <SelectItem key={department.id} value={department.id}>{department.name}</SelectItem>
+                      <SelectItem key={department.id} value={department.id}>{displayDepartmentName(department.name, language, department.name_en || department.nameEn)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>{editingUser.role === 'agent' ? 'Линия / группа инженера *' : 'Группа'}</Label>
+                <Label>{editingUser.role === 'agent' ? t('Линия / группа инженера *', 'Engineer line / group *') : t('Группа', 'Group')}</Label>
                 <Select value={editingUser.groupId || 'none'} onValueChange={(value) => setEditingUser({ ...editingUser, groupId: value === 'none' ? null : value })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Не указана</SelectItem>
+                    <SelectItem value="none">{t('Не указана', 'Not specified')}</SelectItem>
                     {groups
                       .filter((group) => !editingUser.departmentId || group.department_id === editingUser.departmentId || group.departmentId === editingUser.departmentId)
                       .map((group) => (
-                        <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                        <SelectItem key={group.id} value={group.id}>{displayGroupName(group.name, language)}</SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
                 {editingUser.role === 'agent' && !editingUser.groupId && (
-                  <p className="text-xs text-destructive">Выберите линию, чтобы инженер получал правильный доступ и маршрутизацию.</p>
+                  <p className="text-xs text-destructive">{t('Выберите линию, чтобы инженер получал правильный доступ и маршрутизацию.', 'Select a line so the engineer receives the correct access and routing.')}</p>
                 )}
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingUser(null)}>Отмена</Button>
+            <Button variant="outline" onClick={() => setEditingUser(null)}>{t('Отмена', 'Cancel')}</Button>
             <Button onClick={handleUpdateUser} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Сохранить
+              {t('Сохранить', 'Save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -715,18 +763,18 @@ function UsersView() {
       <Dialog open={!!deletingUser} onOpenChange={(open) => !open && setDeletingUser(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Удалить пользователя?</DialogTitle>
+            <DialogTitle>{t('Удалить пользователя?', 'Delete user?')}</DialogTitle>
             <DialogDescription>
               {deletingUser
-                ? `Аккаунт ${deletingUser.name} будет удалён из системы. Это действие нельзя отменить.`
-                : 'Аккаунт будет удалён из системы.'}
+                ? t(`Аккаунт ${deletingUser.name} будет удалён из системы. Это действие нельзя отменить.`, `The account ${displayPersonName(deletingUser.name, language)} will be deleted from the system. This action cannot be undone.`)
+                : t('Аккаунт будет удалён из системы.', 'The account will be deleted from the system.')}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeletingUser(null)}>Отмена</Button>
+            <Button variant="outline" onClick={() => setDeletingUser(null)}>{t('Отмена', 'Cancel')}</Button>
             <Button variant="destructive" onClick={handleDeleteUser} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Удалить
+              {t('Удалить', 'Delete')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -735,24 +783,24 @@ function UsersView() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Добавить пользователя</DialogTitle>
-            <DialogDescription>По умолчанию создается обычный пользователь. Инженеру выберите роль и линию.</DialogDescription>
+            <DialogTitle>{t('Добавить пользователя', 'Add User')}</DialogTitle>
+            <DialogDescription>{t('По умолчанию создается обычный пользователь. Инженеру выберите роль и линию.', 'A regular user is created by default. For an engineer, select the role and line.')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Имя</Label>
-              <Input value={newUser.name} onChange={(event) => setNewUser({ ...newUser, name: event.target.value })} placeholder="ФИО сотрудника" />
+              <Label>{t('Имя', 'Name')}</Label>
+              <Input value={newUser.name} onChange={(event) => setNewUser({ ...newUser, name: event.target.value })} placeholder={t('ФИО сотрудника', 'Employee full name')} />
             </div>
             <div className="space-y-2">
               <Label>Email</Label>
               <Input value={newUser.email} onChange={(event) => setNewUser({ ...newUser, email: event.target.value })} placeholder="name@qazaq.gen" />
             </div>
             <div className="space-y-2">
-              <Label>Временный пароль</Label>
+              <Label>{t('Временный пароль', 'Temporary Password')}</Label>
               <Input value={newUser.password} onChange={(event) => setNewUser({ ...newUser, password: event.target.value })} type="password" />
             </div>
             <div className="space-y-2">
-              <Label>Роль</Label>
+              <Label>{t('Роль', 'Role')}</Label>
               <Select
                 value={newUser.role}
                 onValueChange={(value: AppRole) => setNewUser({
@@ -771,37 +819,37 @@ function UsersView() {
               <p className="text-xs text-muted-foreground">{roleDescriptions[newUser.role]}</p>
             </div>
             <div className="space-y-2">
-              <Label>Отдел</Label>
+              <Label>{t('Отдел', 'Department')}</Label>
               <Select value={newUser.departmentId || 'none'} onValueChange={(value) => setNewUser({ ...newUser, departmentId: value === 'none' ? null : value, groupId: null })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Не указан</SelectItem>
+                  <SelectItem value="none">{t('Не указан', 'Not specified')}</SelectItem>
                   {departments.map((department) => (
-                    <SelectItem key={department.id} value={department.id}>{department.name}</SelectItem>
+                    <SelectItem key={department.id} value={department.id}>{displayDepartmentName(department.name, language, department.name_en || department.nameEn)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>{newUser.role === 'agent' ? 'Линия / группа инженера *' : 'Группа'}</Label>
+              <Label>{newUser.role === 'agent' ? t('Линия / группа инженера *', 'Engineer line / group *') : t('Группа', 'Group')}</Label>
               <Select value={newUser.groupId || 'none'} onValueChange={(value) => setNewUser({ ...newUser, groupId: value === 'none' ? null : value })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Не указана</SelectItem>
+                  <SelectItem value="none">{t('Не указана', 'Not specified')}</SelectItem>
                   {groups
                     .filter((group) => !newUser.departmentId || group.department_id === newUser.departmentId || group.departmentId === newUser.departmentId)
                     .map((group) => (
-                      <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                      <SelectItem key={group.id} value={group.id}>{displayGroupName(group.name, language)}</SelectItem>
                     ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Отмена</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t('Отмена', 'Cancel')}</Button>
             <Button onClick={handleCreateUser} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Создать
+              {t('Создать', 'Create')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2463,11 +2511,16 @@ function RulesView() {
   );
 }
 function DirectoriesView() {
+  const { language } = useLanguage();
+  const t = (ru: string, en: string) => (language === 'en' ? en : ru);
   type DirectoryCategory = {
     id: string;
     group: string;
+    groupEn: string;
     title: string;
+    titleEn: string;
     description: string;
+    descriptionEn: string;
     icon: LucideIcon;
   };
   type DirectoryEntry = {
@@ -2481,15 +2534,15 @@ function DirectoriesView() {
   };
 
   const categories: DirectoryCategory[] = [
-    { id: 'software', group: 'Общий каталог', title: 'Программное обеспечение', description: 'ПО, сервисы и лицензируемые продукты', icon: Boxes },
-    { id: 'manufacturers', group: 'Общий каталог', title: 'Производители', description: 'Вендоры оборудования и ПО', icon: PenLine },
-    { id: 'printers', group: 'Общий каталог', title: 'Принтеры', description: 'Семейства и справочные типы принтеров', icon: Printer },
-    { id: 'computer-models', group: 'Модели', title: 'Модели компьютеров', description: 'Ноутбуки, ПК и рабочие станции', icon: Laptop },
-    { id: 'monitor-models', group: 'Модели', title: 'Модели мониторов', description: 'Мониторы и дисплеи', icon: Monitor },
-    { id: 'network-models', group: 'Модели', title: 'Модели сетевого оборудования', description: 'Коммутаторы, роутеры и точки доступа', icon: Network },
-    { id: 'computer-types', group: 'Типы', title: 'Типы компьютеров', description: 'Классификация компьютерной техники', icon: Laptop },
-    { id: 'device-types', group: 'Типы', title: 'Типы устройств', description: 'Периферия и вспомогательные устройства', icon: Boxes },
-    { id: 'os', group: 'Операционные системы', title: 'Операционные системы', description: 'ОС, версии, редакции и архитектуры', icon: PenLine },
+    { id: 'software', group: 'Общий каталог', groupEn: 'General Catalog', title: 'Программное обеспечение', titleEn: 'Software', description: 'ПО, сервисы и лицензируемые продукты', descriptionEn: 'Software, services, and licensed products', icon: Boxes },
+    { id: 'manufacturers', group: 'Общий каталог', groupEn: 'General Catalog', title: 'Производители', titleEn: 'Manufacturers', description: 'Вендоры оборудования и ПО', descriptionEn: 'Hardware and software vendors', icon: PenLine },
+    { id: 'printers', group: 'Общий каталог', groupEn: 'General Catalog', title: 'Принтеры', titleEn: 'Printers', description: 'Семейства и справочные типы принтеров', descriptionEn: 'Printer families and reference types', icon: Printer },
+    { id: 'computer-models', group: 'Модели', groupEn: 'Models', title: 'Модели компьютеров', titleEn: 'Computer Models', description: 'Ноутбуки, ПК и рабочие станции', descriptionEn: 'Laptops, PCs, and workstations', icon: Laptop },
+    { id: 'monitor-models', group: 'Модели', groupEn: 'Models', title: 'Модели мониторов', titleEn: 'Monitor Models', description: 'Мониторы и дисплеи', descriptionEn: 'Monitors and displays', icon: Monitor },
+    { id: 'network-models', group: 'Модели', groupEn: 'Models', title: 'Модели сетевого оборудования', titleEn: 'Network Equipment Models', description: 'Коммутаторы, роутеры и точки доступа', descriptionEn: 'Switches, routers, and access points', icon: Network },
+    { id: 'computer-types', group: 'Типы', groupEn: 'Types', title: 'Типы компьютеров', titleEn: 'Computer Types', description: 'Классификация компьютерной техники', descriptionEn: 'Computer equipment classification', icon: Laptop },
+    { id: 'device-types', group: 'Типы', groupEn: 'Types', title: 'Типы устройств', titleEn: 'Device Types', description: 'Периферия и вспомогательные устройства', descriptionEn: 'Peripheral and auxiliary devices', icon: Boxes },
+    { id: 'os', group: 'Операционные системы', groupEn: 'Operating Systems', title: 'Операционные системы', titleEn: 'Operating Systems', description: 'ОС, версии, редакции и архитектуры', descriptionEn: 'OS versions, editions, and architectures', icon: PenLine },
   ];
 
   const [selectedCategoryId, setSelectedCategoryId] = useState(categories[0].id);
@@ -2515,9 +2568,25 @@ function DirectoriesView() {
 
   const selectedCategory = categories.find((category) => category.id === selectedCategoryId) || categories[0];
   const groupedCategories = categories.reduce<Record<string, DirectoryCategory[]>>((acc, category) => {
-    acc[category.group] = [...(acc[category.group] || []), category];
+    const groupLabel = language === 'en' ? category.groupEn : category.group;
+    acc[groupLabel] = [...(acc[groupLabel] || []), category];
     return acc;
   }, {});
+  const categoryTitle = (category: DirectoryCategory) => language === 'en' ? category.titleEn : category.title;
+  const categoryDescription = (category: DirectoryCategory) => language === 'en' ? category.descriptionEn : category.description;
+  const entryDescription = (description: string) => {
+    if (language !== 'en') return description;
+    const map: Record<string, string> = {
+      'Офисный пакет и облачные сервисы': 'Office suite and cloud services',
+      'Удаленная поддержка пользователей': 'Remote user support',
+      'Компьютеры и серверное оборудование': 'Computers and server equipment',
+      'Ноутбуки, ПК, принтеры': 'Laptops, PCs, printers',
+      'Ноутбук сотрудника': 'Employee laptop',
+      'Коммутатор доступа': 'Access switch',
+      'Рабочая станция пользователя': 'User workstation',
+    };
+    return map[description] || description;
+  };
   const filteredEntries = entries
     .filter((entry) => entry.categoryId === selectedCategoryId)
     .filter((entry) => {
@@ -2557,20 +2626,20 @@ function DirectoriesView() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            <span>Главная</span>
+            <span>{t('Главная', 'Dashboard')}</span>
             <span>/</span>
-            <span>Администрирование</span>
+            <span>{t('Администрирование', 'Administration')}</span>
             <span>/</span>
-            <span className="font-medium text-foreground">Справочники</span>
+            <span className="font-medium text-foreground">{t('Справочники', 'Directories')}</span>
           </div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
             <BookOpen className="h-6 w-6 text-primary" />
-            Справочники
+            {t('Справочники', 'Directories')}
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" className="gap-2"><Upload className="h-4 w-4" />Импорт</Button>
-          <Button variant="outline" className="gap-2"><Download className="h-4 w-4" />Экспорт</Button>
+          <Button variant="outline" className="gap-2"><Upload className="h-4 w-4" />{t('Импорт', 'Import')}</Button>
+          <Button variant="outline" className="gap-2"><Download className="h-4 w-4" />{t('Экспорт', 'Export')}</Button>
           <Button
             className="gap-2"
             onClick={() => {
@@ -2579,21 +2648,21 @@ function DirectoriesView() {
             }}
           >
             <Plus className="h-4 w-4" />
-            Добавить запись
+            {t('Добавить запись', 'Add Entry')}
           </Button>
         </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="rounded-lg"><CardContent className="p-5"><p className="text-sm text-muted-foreground">Справочников</p><p className="mt-2 text-2xl font-semibold">{categories.length}</p></CardContent></Card>
-        <Card className="rounded-lg"><CardContent className="p-5"><p className="text-sm text-muted-foreground">Записей</p><p className="mt-2 text-2xl font-semibold">{entries.length}</p></CardContent></Card>
-        <Card className="rounded-lg"><CardContent className="p-5"><p className="text-sm text-muted-foreground">Активные записи</p><p className="mt-2 text-2xl font-semibold">{entries.filter((entry) => entry.active).length}</p></CardContent></Card>
+        <Card className="rounded-lg"><CardContent className="p-5"><p className="text-sm text-muted-foreground">{t('Справочников', 'Directories')}</p><p className="mt-2 text-2xl font-semibold">{categories.length}</p></CardContent></Card>
+        <Card className="rounded-lg"><CardContent className="p-5"><p className="text-sm text-muted-foreground">{t('Записей', 'Entries')}</p><p className="mt-2 text-2xl font-semibold">{entries.length}</p></CardContent></Card>
+        <Card className="rounded-lg"><CardContent className="p-5"><p className="text-sm text-muted-foreground">{t('Активные записи', 'Active entries')}</p><p className="mt-2 text-2xl font-semibold">{entries.filter((entry) => entry.active).length}</p></CardContent></Card>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
         <Card className="rounded-lg">
           <CardHeader className="border-b">
-            <CardTitle>Каталоги</CardTitle>
+            <CardTitle>{t('Каталоги', 'Catalogs')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 p-3">
             {Object.entries(groupedCategories).map(([group, items]) => (
@@ -2614,8 +2683,8 @@ function DirectoriesView() {
                       >
                         <Icon className="mt-0.5 h-4 w-4 shrink-0" />
                         <span className="min-w-0">
-                          <span className="block font-medium">{category.title}</span>
-                          <span className={cn('block text-xs text-muted-foreground', active && 'text-primary/75')}>{category.description}</span>
+                          <span className="block font-medium">{categoryTitle(category)}</span>
+                          <span className={cn('block text-xs text-muted-foreground', active && 'text-primary/75')}>{categoryDescription(category)}</span>
                         </span>
                         <Badge variant="outline" className="ml-auto shrink-0">{entries.filter((entry) => entry.categoryId === category.id).length}</Badge>
                       </button>
@@ -2631,12 +2700,12 @@ function DirectoriesView() {
           <CardHeader className="gap-4 border-b">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <CardTitle>{selectedCategory.title}</CardTitle>
-                <p className="mt-1 text-sm text-muted-foreground">{selectedCategory.description}</p>
+                <CardTitle>{categoryTitle(selectedCategory)}</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">{categoryDescription(selectedCategory)}</p>
               </div>
               <div className="relative min-w-[280px]">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Поиск по записи" className="pl-10" />
+                <Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t('Поиск по записи', 'Search entries')} className="pl-10" />
               </div>
             </div>
           </CardHeader>
@@ -2645,11 +2714,11 @@ function DirectoriesView() {
               <table className="w-full min-w-[780px] text-sm">
                 <thead className="border-b bg-muted/45 text-left text-xs uppercase text-muted-foreground">
                   <tr>
-                    <th className="px-5 py-3 font-medium">Запись</th>
-                    <th className="px-5 py-3 font-medium">Код</th>
-                    <th className="px-5 py-3 font-medium">Описание</th>
-                    <th className="px-5 py-3 font-medium">Статус</th>
-                    <th className="px-5 py-3 text-right font-medium">Действия</th>
+                    <th className="px-5 py-3 font-medium">{t('Запись', 'Entry')}</th>
+                    <th className="px-5 py-3 font-medium">{t('Код', 'Code')}</th>
+                    <th className="px-5 py-3 font-medium">{t('Описание', 'Description')}</th>
+                    <th className="px-5 py-3 font-medium">{t('Статус', 'Status')}</th>
+                    <th className="px-5 py-3 text-right font-medium">{t('Действия', 'Actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2657,22 +2726,22 @@ function DirectoriesView() {
                     <tr key={entry.id} className="border-b last:border-0 hover:bg-muted/35">
                       <td className="px-5 py-4">
                         <p className="font-medium text-foreground">{entry.name}</p>
-                        <p className="text-xs text-muted-foreground">Обновлено: {entry.updatedAt}</p>
+                        <p className="text-xs text-muted-foreground">{t('Обновлено:', 'Updated:')} {entry.updatedAt}</p>
                       </td>
                       <td className="px-5 py-4"><Badge variant="outline">{entry.code}</Badge></td>
-                      <td className="px-5 py-4 text-muted-foreground">{entry.description || '-'}</td>
+                      <td className="px-5 py-4 text-muted-foreground">{entryDescription(entry.description) || '-'}</td>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
                           <Switch checked={entry.active} onCheckedChange={(checked) => setEntries((current) => current.map((item) => item.id === entry.id ? { ...item, active: checked, updatedAt: '2026-06-08' } : item))} />
-                          <span className="text-muted-foreground">{entry.active ? 'Активна' : 'Выключена'}</span>
+                          <span className="text-muted-foreground">{entry.active ? t('Активна', 'Active') : t('Выключена', 'Disabled')}</span>
                         </div>
                       </td>
                       <td className="px-5 py-4 text-right">
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => setEditingEntry({ ...entry })} aria-label="Редактировать запись">
+                          <Button variant="ghost" size="icon" onClick={() => setEditingEntry({ ...entry })} aria-label={t('Редактировать запись', 'Edit entry')}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => deleteEntry(entry.id)} aria-label="Удалить запись">
+                          <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => deleteEntry(entry.id)} aria-label={t('Удалить запись', 'Delete entry')}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -2681,7 +2750,7 @@ function DirectoriesView() {
                   ))}
                   {filteredEntries.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="h-40 px-5 text-center text-muted-foreground">Записи не найдены</td>
+                      <td colSpan={5} className="h-40 px-5 text-center text-muted-foreground">{t('Записи не найдены', 'No entries found')}</td>
                     </tr>
                   )}
                 </tbody>
@@ -2694,28 +2763,28 @@ function DirectoriesView() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Добавить запись</DialogTitle>
-            <DialogDescription>Создайте значение для выбранного справочника</DialogDescription>
+            <DialogTitle>{t('Добавить запись', 'Add Entry')}</DialogTitle>
+            <DialogDescription>{t('Создайте значение для выбранного справочника', 'Create a value for the selected directory')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Справочник</Label>
+              <Label>{t('Справочник', 'Directory')}</Label>
               <Select value={draftEntry.categoryId} onValueChange={(value) => setDraftEntry({ ...draftEntry, categoryId: value })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.title}</SelectItem>)}</SelectContent>
+                <SelectContent>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{categoryTitle(category)}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className="space-y-2"><Label>Название</Label><Input value={draftEntry.name} onChange={(event) => setDraftEntry({ ...draftEntry, name: event.target.value })} /></div>
-            <div className="space-y-2"><Label>Код</Label><Input value={draftEntry.code} onChange={(event) => setDraftEntry({ ...draftEntry, code: event.target.value })} /></div>
-            <div className="space-y-2"><Label>Описание</Label><Input value={draftEntry.description} onChange={(event) => setDraftEntry({ ...draftEntry, description: event.target.value })} /></div>
+            <div className="space-y-2"><Label>{t('Название', 'Name')}</Label><Input value={draftEntry.name} onChange={(event) => setDraftEntry({ ...draftEntry, name: event.target.value })} /></div>
+            <div className="space-y-2"><Label>{t('Код', 'Code')}</Label><Input value={draftEntry.code} onChange={(event) => setDraftEntry({ ...draftEntry, code: event.target.value })} /></div>
+            <div className="space-y-2"><Label>{t('Описание', 'Description')}</Label><Input value={draftEntry.description} onChange={(event) => setDraftEntry({ ...draftEntry, description: event.target.value })} /></div>
             <label className="flex items-center gap-3 rounded-md border px-3 py-2">
               <Switch checked={draftEntry.active} onCheckedChange={(checked) => setDraftEntry({ ...draftEntry, active: checked })} />
-              <span>Активна</span>
+              <span>{t('Активна', 'Active')}</span>
             </label>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Отмена</Button>
-            <Button onClick={saveDraftEntry}>Создать</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t('Отмена', 'Cancel')}</Button>
+            <Button onClick={saveDraftEntry}>{t('Создать', 'Create')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2723,23 +2792,23 @@ function DirectoriesView() {
       <Dialog open={!!editingEntry} onOpenChange={(open) => !open && setEditingEntry(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Редактировать запись</DialogTitle>
-            <DialogDescription>Измените значение справочника</DialogDescription>
+            <DialogTitle>{t('Редактировать запись', 'Edit Entry')}</DialogTitle>
+            <DialogDescription>{t('Измените значение справочника', 'Update the directory value')}</DialogDescription>
           </DialogHeader>
           {editingEntry && (
             <div className="space-y-4">
-              <div className="space-y-2"><Label>Название</Label><Input value={editingEntry.name} onChange={(event) => setEditingEntry({ ...editingEntry, name: event.target.value })} /></div>
-              <div className="space-y-2"><Label>Код</Label><Input value={editingEntry.code} onChange={(event) => setEditingEntry({ ...editingEntry, code: event.target.value })} /></div>
-              <div className="space-y-2"><Label>Описание</Label><Input value={editingEntry.description} onChange={(event) => setEditingEntry({ ...editingEntry, description: event.target.value })} /></div>
+              <div className="space-y-2"><Label>{t('Название', 'Name')}</Label><Input value={editingEntry.name} onChange={(event) => setEditingEntry({ ...editingEntry, name: event.target.value })} /></div>
+              <div className="space-y-2"><Label>{t('Код', 'Code')}</Label><Input value={editingEntry.code} onChange={(event) => setEditingEntry({ ...editingEntry, code: event.target.value })} /></div>
+              <div className="space-y-2"><Label>{t('Описание', 'Description')}</Label><Input value={editingEntry.description} onChange={(event) => setEditingEntry({ ...editingEntry, description: event.target.value })} /></div>
               <label className="flex items-center gap-3 rounded-md border px-3 py-2">
                 <Switch checked={editingEntry.active} onCheckedChange={(checked) => setEditingEntry({ ...editingEntry, active: checked })} />
-                <span>Активна</span>
+                <span>{t('Активна', 'Active')}</span>
               </label>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingEntry(null)}>Отмена</Button>
-            <Button onClick={saveEditingEntry}>Сохранить</Button>
+            <Button variant="outline" onClick={() => setEditingEntry(null)}>{t('Отмена', 'Cancel')}</Button>
+            <Button onClick={saveEditingEntry}>{t('Сохранить', 'Save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

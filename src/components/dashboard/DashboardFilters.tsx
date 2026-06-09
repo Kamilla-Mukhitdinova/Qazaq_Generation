@@ -30,7 +30,27 @@ interface DashboardFiltersProps {
 
 export default function DashboardFilters({ filters, onFilterChange, onReset, departments, agents, filterOptions }: DashboardFiltersProps) {
   const { t, language } = useLanguage();
-  const deptName = (d: { name: string; nameEn?: string }) => language === 'en' ? (d.nameEn || d.name) : d.name;
+  const deptName = (d: { name: string; nameEn?: string }) => {
+    if (language !== 'en') return d.name;
+    const fallback: Record<string, string> = {
+      'HR бөлімі': 'HR Department',
+      'IT бөлімі': 'IT Department',
+      'Қаржы бөлімі': 'Finance Department',
+      'ПТО': 'Engineering Department',
+    };
+    return d.nameEn || fallback[d.name] || d.name;
+  };
+  const personName = (name: string) => {
+    if (language !== 'en') return name;
+    const map: Record<string, string> = {
+      'Лия Жарылқасын': 'Liya Zharylkassyn',
+      'Аиша Нурланова': 'Aisha Nurlanova',
+      'Камилла Қайратқызы': 'Kamilla Kairatkyzy',
+      'Камилла Мұхитдинова': 'Kamilla Mukhitdinova',
+      'Дәулетова Дильмира Дильмуратовна': 'Dauletova Dilmira Dilmuratovna',
+    };
+    return map[name] || name;
+  };
   const hasFilters = Object.values(filters).some(v => v && v !== 'all');
   const hasOption = (key: keyof DashboardFilterOptions, value: string) => filterOptions[key].includes(value);
 
@@ -99,7 +119,7 @@ export default function DashboardFilters({ filters, onFilterChange, onReset, dep
         <SelectContent>
           <SelectItem value="all">{t('common.all')}</SelectItem>
           {agents.map(a => (
-            <SelectItem key={a.id} value={a.id} disabled={!hasOption('assignee', a.id)}>{a.name}</SelectItem>
+            <SelectItem key={a.id} value={a.id} disabled={!hasOption('assignee', a.id)}>{personName(a.name)}</SelectItem>
           ))}
         </SelectContent>
       </Select>
