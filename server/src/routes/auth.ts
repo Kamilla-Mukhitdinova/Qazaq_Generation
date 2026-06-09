@@ -275,6 +275,27 @@ router.post('/confirm-2fa', authMiddleware, async (req, res) => {
   }
 });
 
+// --- Emergency admin reset 2FA (no login required, protected by ADMIN_SECRET env var) ---
+router.post('/admin-reset-2fa', async (req, res) => {
+  try {
+    const { email, adminSecret } = req.body;
+    const envSecret = process.env.ADMIN_SECRET;
+    if (!envSecret || adminSecret !== envSecret) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    await db.update(users)
+      .set({ totpEnabled: false, totpSecret: null })
+      .where(eq(users.id, user.id));
+    return res.json({ success: true, message: `2FA disabled for ${email}` });
+  } catch {
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // --- Disable 2FA ---
 router.post('/disable-2fa', authMiddleware, async (req, res) => {
   try {
